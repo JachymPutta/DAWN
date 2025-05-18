@@ -1,23 +1,15 @@
 [package]
 name = "dawn-bindings"
-description = "Nix bindings to initialize plugin"
-version = { workspace = true }
-edition = { workspace = true }
-rust-version = { workspace = true }
-authors =  { workspace = true }
-license-file =  { workspace = true }
-readme =  { workspace = true }
-repository =  { workspace = true }
-keywords =  { workspace = true }
-categories =  { workspace = true }
-exclude =  { workspace = true }
+rust-version.workspace = true
+edition.workspace = true
+version.workspace = true
+exclude.workspace = true
+authors.workspace = true
+license-file.workspace = true
+readme.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 
-[lib]
-crate_type = ["cdylib"]
-test = false
-
-[build-dependencies]
-cc = "1.0.83"
-pkg-config = "0.3.28"
-cbindgen = "0.26.0"
-miette = { version = "5.10.0", features = ["fancy"] }
+[dependencies]
+tvix-eval = { git = "https://github.com/tvlfyi/tvix.git", version = "0.1.0" }

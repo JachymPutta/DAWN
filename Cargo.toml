@@ -1,14 +1,13 @@
 [workspace]
 members = [
-        "dawn-bindings",
         "dawn-plugin",
-        "dawn-infra",
+        "dawn-infra", "dawn-bindings",
 ]
 resolver = "2"
 exclude = ["target_dirs", ".github"]
 
 [workspace.package]
-rust-version = "1.75.0"
+rust-version = "1.85.0"
 edition = "2021"
 version = "0.1.0"
 exclude = ["target_dirs", ".github", "target"]

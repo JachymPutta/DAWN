@@ -1,15 +1,18 @@
-pub struct Context {}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn it_works() {
+        let code = "1 + 2";
+        let eval_builder = tvix_eval::Evaluation::builder_pure();
+        let eval = eval_builder.build();
 
-#[no_mangle]
-pub extern "C" fn initialize_plugin() -> *mut Context {
-    println!("We initialized debugging context");
-    Box::into_raw(Box::new(Context {}))
-}
-
-/// SAFETY:
-/// The invariant that "cx" is exclusively available here is maintained by the
-/// other side of the FFI. Beware.
-#[no_mangle]
-pub extern "C" fn deinitialize_plugin(_cx: &mut Context) {
-    println!("HELLO WORLD FROM RUST!\n");
+        let tvix_result = eval
+            .evaluate(code, None)
+            .value
+            .expect("tvix evaluation should succeed")
+            .to_string()
+            .parse::<i32>()
+            .unwrap_or_default();
+        assert_eq!(tvix_result, 3);
+    }
 }
