@@ -198,6 +198,10 @@ checksum = "2a2330da5de22e8a3cb63252ce2abb30116bf5265e89c0e01bc17015ce30a476"
 name = "dawn-bindings"
 version = "0.1.0"
 dependencies = [
+ "dawn-infra",
+ "debug_types",
+ "tower-lsp",
+ "tower-service",
  "tvix-eval",
 ]
 
@@ -233,6 +237,7 @@ dependencies = [
  "async-trait",
  "atomic_enum",
  "bytes",
+ "dawn-bindings",
  "dawn-infra",
  "debug_types",
  "either",

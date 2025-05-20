@@ -36,5 +36,6 @@ tower-lsp = { version = "0.20.0" }
 tower-service = "0.3.3"
 
 dawn-infra = { path = "../dawn-infra" }
+dawn-bindings = { path = "../dawn-bindings" }
 
 atomic_enum = "0.3.0"

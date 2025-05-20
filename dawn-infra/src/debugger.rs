@@ -1,6 +1,5 @@
-use async_trait::async_trait;
 use atomic_enum::atomic_enum;
-use tokio::io::{Stdin, Stdout};
+use tokio::io::{AsyncRead, AsyncWrite, Stdin, Stdout};
 
 use debug_types::{
     events::{Event, EventBody},
@@ -38,23 +37,31 @@ pub enum State {
 
 /// Struct used to abstract away communication with client
 /// TODO rename to something a bit more intuitive
-pub struct Client {
+pub struct Client<R, W>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
     /// which state we're on
     state: AtomicState,
     /// the sequence number we're on
     send_seq: i64,
     /// reader for stdin
-    reader: FramedRead<Stdin, DebugAdapterCodec<ProtocolMessage>>,
+    pub reader: FramedRead<R, DebugAdapterCodec<ProtocolMessage>>,
     /// reader for stdout
-    writer: FramedWrite<Stdout, DebugAdapterCodec<ProtocolMessage>>,
+    pub writer: FramedWrite<W, DebugAdapterCodec<ProtocolMessage>>,
 }
 
-impl Client {
+impl<R, W> Client<R, W>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
     /// create new client
     #[must_use]
     pub fn new(
-        reader: FramedRead<Stdin, DebugAdapterCodec<ProtocolMessage>>,
-        writer: FramedWrite<Stdout, DebugAdapterCodec<ProtocolMessage>>,
+        reader: FramedRead<R, DebugAdapterCodec<ProtocolMessage>>,
+        writer: FramedWrite<W, DebugAdapterCodec<ProtocolMessage>>,
     ) -> Self {
         Self {
             state: State::Uninitialized.into(),
@@ -142,8 +149,11 @@ impl Client {
 }
 
 /// a debug adapter mt
-#[async_trait]
 pub trait DebugAdapter {
     /// how to handle various requests
-    async fn handle_request(&mut self, seq: i64, command: RequestCommand);
+    fn handle_request(
+        &mut self,
+        seq: i64,
+        command: RequestCommand,
+    ) -> impl std::future::Future<Output = ()>;
 }

@@ -1,21 +1,28 @@
-use async_trait::async_trait;
 use debug_types::{
     events::EventBody,
     requests::{BreakpointLocationsArguments, InitializeRequestArguments, LaunchRequestArguments},
     responses::{BreakpointLocationsResponse, InitializeResponse, Response, ResponseBody},
-    types::{BreakpointLocation, Capabilities},
+    types::BreakpointLocation,
 };
 use either::Either;
 
-use dawn_infra::debugger::{Client, DebugAdapter, State};
+use dawn_infra::{
+    backend::DebugBackend,
+    debugger::{Client, DebugAdapter, State},
+};
 use debug_types::requests::RequestCommand::{
     BreakpointLocations, ConfigurationDone, Disconnect, Initialize, Launch,
 };
 use nll::nll_todo::nll_todo;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::error;
 
-#[async_trait]
-impl DebugAdapter for NixDebugAdapter {
+impl<B, R, W> DebugAdapter for NixDebugAdapter<B, R, W>
+where
+    B: DebugBackend,
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
     async fn handle_request(&mut self, seq: i64, command: debug_types::requests::RequestCommand) {
         match command {
             Initialize(initialize_args) => self.handle_initialize(seq, initialize_args).await,
@@ -40,17 +47,15 @@ impl DebugAdapter for NixDebugAdapter {
     }
 }
 
-impl NixDebugAdapter {
+impl<B, R, W> NixDebugAdapter<B, R, W>
+where
+    B: DebugBackend,
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
     /// handler for receipt of initialize event from client
-    async fn handle_initialize(&mut self, seq: i64, _args: InitializeRequestArguments) {
-        let capabilities = Capabilities {
-            supports_configuration_done_request: Some(true),
-            support_terminate_debuggee: Some(true),
-            supports_loaded_sources_request: Some(true),
-            supports_breakpoint_locations_request: Some(true),
-            ..default_capabilities()
-        };
-
+    async fn handle_initialize(&mut self, seq: i64, args: InitializeRequestArguments) {
+        let capabilities = self.debugger.initialize(args);
         let response = InitializeResponse { capabilities };
 
         let body = Some(ResponseBody::Initialize(response));
@@ -65,9 +70,9 @@ impl NixDebugAdapter {
             }))
             .await;
 
-        error!("HELLO WORLD 1!!");
+        // println!("HELLO WORLD 1!!");
         self.client.set_state(State::Initialized);
-        error!("HELLO WORLD!!");
+        // println!("HELLO WORLD!!");
 
         // per spec, send initialized event
         // after responding with capabilities
@@ -91,32 +96,34 @@ impl NixDebugAdapter {
 
     /// handler for receipt of launch event from client
     async fn handle_launch(&mut self, seq: i64, args: LaunchRequestArguments) {
-        let Some(root_file) = args.manifest else {
+        let Some(root_file) = args.manifest.clone() else {
             self.client
                 .send(Either::Right(Response {
-                request_seq: seq,
-                success: false,
-                message: Some("Root file must be specified".to_string()),
-                body: None,
-            })).await;
+                    request_seq: seq,
+                    success: false,
+                    message: Some("Root file must be specified".to_string()),
+                    body: None,
+                }))
+                .await;
             return;
-
         };
         // TODO open the file.
 
         // TODO check that this attribute exists
-        let Some(flake_attribute) = args.expression else {
+        let Some(flake_attribute) = args.expression.clone() else {
             self.client
                 .send(Either::Right(Response {
-                request_seq: seq,
-                success: false,
-                message: Some("Attribute must be specified".to_string()),
-                body: None,
-            })).await;
+                    request_seq: seq,
+                    success: false,
+                    message: Some("Attribute must be specified".to_string()),
+                    body: None,
+                }))
+                .await;
             return;
         };
 
         // error!("launch args: {args:?}");
+        self.debugger.launch(args);
         // TODO some argument checking I think
         self.client
             .send(Either::Right(Response {
@@ -185,62 +192,22 @@ impl NixDebugAdapter {
 }
 
 /// overarching struct holding dap state and comms
-pub struct NixDebugAdapter {
+pub struct NixDebugAdapter<B, R, W>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+    B: DebugBackend,
+{
     /// the comms
-    pub client: Client,
+    pub client: Client<R, W>,
     /// the state
     pub state: NixDebugState,
+    /// the debugger
+    pub debugger: B,
 }
 
 /// the debug state
 #[derive(Default, Debug, Clone)]
 pub struct NixDebugState {
     // root_file: std::io
-}
-
-// FIXME why does capabilities not implement default?
-/// "sane" capabilities: disable everything!
-#[must_use]
-pub fn default_capabilities() -> Capabilities {
-    Capabilities {
-        supports_configuration_done_request: None,
-        supports_function_breakpoints: None,
-        supports_step_in_targets_request: None,
-        support_terminate_debuggee: None,
-        supports_loaded_sources_request: None,
-        supports_data_breakpoints: None,
-        supports_breakpoint_locations_request: None,
-        supports_conditional_breakpoints: None,
-        supports_hit_conditional_breakpoints: None,
-        supports_evaluate_for_hovers: None,
-        exception_breakpoint_filters: None,
-        supports_step_back: None,
-        supports_set_variable: None,
-        supports_restart_frame: None,
-        supports_goto_targets_request: None,
-        supports_completions_request: None,
-        completion_trigger_characters: None,
-        supports_modules_request: None,
-        additional_module_columns: None,
-        supported_checksum_algorithms: None,
-        supports_restart_request: None,
-        supports_exception_options: None,
-        supports_value_formatting_options: None,
-        supports_exception_info_request: None,
-        support_suspend_debuggee: None,
-        supports_delayed_stack_trace_loading: None,
-        supports_log_points: None,
-        supports_terminate_threads_request: None,
-        supports_set_expression: None,
-        supports_terminate_request: None,
-        supports_read_memory_request: None,
-        supports_write_memory_request: None,
-        supports_disassemble_request: None,
-        supports_cancel_request: None,
-        supports_clipboard_context: None,
-        supports_stepping_granularity: None,
-        supports_instruction_breakpoints: None,
-        supports_exception_filter_options: None,
-        supports_single_thread_execution_requests: None,
-    }
 }

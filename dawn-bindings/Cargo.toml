@@ -13,3 +13,8 @@ categories.workspace = true
 
 [dependencies]
 tvix-eval = { git = "https://github.com/tvlfyi/tvix.git", version = "0.1.0" }
+debug_types = "1.0.0"
+tower-lsp = { version = "0.20.0" }
+tower-service = "0.3.3"
+
+dawn-infra = { path = "../dawn-infra" }
