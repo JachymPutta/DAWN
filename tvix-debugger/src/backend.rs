@@ -1,5 +1,7 @@
+use std::path::PathBuf;
+
 use debug_types::types::Capabilities;
-use tvix_eval::{Evaluation, EvaluationBuilder, SourceCode};
+use tvix_eval::{EvalMode, Evaluation, SourceCode};
 
 use crate::commands::{Command, CommandReply};
 use crate::config::Args;
@@ -7,6 +9,7 @@ use crate::observer::DebugObserver;
 
 /// tvix backend struct
 pub struct TvixBackend {
+    code_path: PathBuf,
     code: SourceCode,
     observer: DebugObserver,
 }
@@ -14,9 +17,14 @@ pub struct TvixBackend {
 impl TvixBackend {
     pub fn new(args: Args) -> Self {
         let code = SourceCode::default();
-        code.add_file("main".to_string(), args.program);
+        let code_path = args.program.clone();
+        code.add_file("main".to_string(), args.program.to_str().unwrap().into());
         let observer = DebugObserver::new();
-        TvixBackend { code, observer }
+        TvixBackend {
+            code_path,
+            code,
+            observer,
+        }
     }
 }
 
@@ -45,12 +53,19 @@ impl TvixBackend {
     }
 
     fn launch(&mut self) {
-        let mut eval_builder =
-            EvaluationBuilder::with_source_map(EvaluationBuilder::new_pure(), self.code.clone());
-        eval_builder.set_runtime_observer(Some(&mut self.observer));
-        let evaluator: Evaluation<'_, '_, '_> = eval_builder.build();
+        let eval = Evaluation::builder_impure()
+            .mode(EvalMode::Strict)
+            .with_source_map(self.code.clone())
+            .runtime_observer(Some(&mut self.observer))
+            .build();
+        let code = std::fs::read_to_string(&self.code_path).expect(&format!(
+            "Error opening file: {}",
+            &self.code_path.to_str().unwrap()
+        ));
+        println!("{:?}", eval.source_map());
+        let result = eval.evaluate(code, Some(self.code_path.clone()));
 
-        println!("{:?}", evaluator.source_map());
+        println!("{:?}", result.value);
         // let res = evaluator.evaluate(&self.program, None);
         // println!("result of prog {} is {}", &self.program, res.value.unwrap());
     }

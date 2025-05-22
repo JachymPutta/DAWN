@@ -1,12 +1,13 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 
 #[derive(Parser, Debug)]
 pub struct Args {
     #[arg(short, long)]
-    pub program: String,
-    // TODO: add expressions -- so far just programs
-    // #[arg(short, long, conflicts_with = "program")]
-    // pub expression: String,
+    pub program: PathBuf, // TODO: add expressions -- so far just programs
+                          // #[arg(short, long, conflicts_with = "program")]
+                          // pub expression: String,
 }
 
 impl Args {
