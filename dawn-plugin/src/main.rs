@@ -1,4 +1,4 @@
-use dawn_plugin::run_debugger;
+use dawn_plugin::run_debug_adapter;
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 10)]
 async fn main() {
@@ -7,5 +7,5 @@ async fn main() {
 
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
-    run_debugger(stdin, stdout).await;
+    run_debug_adapter(stdin, stdout).await;
 }

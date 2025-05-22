@@ -1,5 +1,5 @@
 [package]
-name = "dawn-bindings"
+name = "tvix-debugger"
 rust-version.workspace = true
 edition.workspace = true
 version.workspace = true
@@ -12,9 +12,14 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-tvix-eval = { git = "https://github.com/tvlfyi/tvix.git", version = "0.1.0" }
+tvix-eval = { path = "../../tvix/eval" }
 debug_types = "1.0.0"
 tower-lsp = { version = "0.20.0" }
 tower-service = "0.3.3"
 
 dawn-infra = { path = "../dawn-infra" }
+clap = { version = "4.5.38", features = ["derive"] }
+rustyline = "15.0.0"
+strum = { version = "0.27.1", features = ["derive"] }
+strum_macros = "0.27.1"
+either = "1.15.0"

@@ -9,19 +9,19 @@
 #![allow(clippy::unused_async, clippy::module_name_repetitions)]
 //! nix debugger implementation
 
-use dawn_bindings::backend::TvixBackend;
 use dawn_infra::codec::DebugAdapterCodec;
 use dawn_infra::debugger::{Client, DebugAdapter, State};
 use debug_types::ProtocolMessage;
 use nix_debugger::{NixDebugAdapter, NixDebugState};
 use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::error;
+use tvix_debugger::backend::TvixBackend;
 
 /// debugger
 pub mod nix_debugger;
 
 /// Runs the debug adapter loop using the provided async reader/writer.
-pub async fn run_debugger<R, W>(reader: R, writer: W)
+pub async fn run_debug_adapter<R, W>(reader: R, writer: W)
 where
     R: tokio::io::AsyncRead + Unpin + Send + 'static,
     W: tokio::io::AsyncWrite + Unpin + Send + 'static,

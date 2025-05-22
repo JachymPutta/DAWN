@@ -1,38 +1,58 @@
-use dawn_infra::backend::DebugBackend;
-use debug_types::requests::{InitializeRequestArguments, LaunchRequestArguments};
 use debug_types::types::Capabilities;
-use tvix_eval::Evaluation;
+use tvix_eval::{Evaluation, EvaluationBuilder, SourceCode};
+
+use crate::commands::{Command, CommandReply};
+use crate::config::Args;
+use crate::observer::DebugObserver;
 
 /// tvix backend struct
 pub struct TvixBackend {
-    root_file: String,
+    code: SourceCode,
+    observer: DebugObserver,
 }
 
 impl TvixBackend {
-    pub fn new() -> Self {
-        TvixBackend {
-            root_file: "".into(),
-        }
+    pub fn new(args: Args) -> Self {
+        let code = SourceCode::default();
+        code.add_file("main".to_string(), args.program);
+        let observer = DebugObserver::new();
+        TvixBackend { code, observer }
     }
 }
 
-impl DebugBackend for TvixBackend {
-    fn initialize(&mut self, _args: InitializeRequestArguments) -> Capabilities {
+impl TvixBackend {
+    pub fn handle_command(&mut self, command: Command) -> CommandReply {
+        match command {
+            Command::Initialize => {
+                let _ = self.initialize();
+                CommandReply::InitializeReply
+            }
+            Command::Launch => {
+                self.launch();
+                CommandReply::LaunchReply
+            }
+            _ => {
+                unreachable!("Unknown command in backend: {}", command)
+            }
+        }
+    }
+
+    fn initialize(&mut self) -> Capabilities {
         Capabilities {
             supports_configuration_done_request: Some(true),
             ..default_capabilities()
         }
     }
 
-    fn launch(&mut self, args: LaunchRequestArguments) {
-        if let Some(expr) = args.expression {
-            let eval_builder = Evaluation::builder_pure();
-            let evaluator = eval_builder.build();
-            let res = evaluator.evaluate(expr, None);
-            println!("Evaluation result: {:?}", res.value.unwrap());
-        } else {
-            todo!()
-        }
+    fn launch(&mut self) {
+        let mut eval_builder =
+            EvaluationBuilder::with_source_map(EvaluationBuilder::new_pure(), self.code.clone());
+        eval_builder.set_runtime_observer(Some(&mut self.observer));
+        let evaluator: Evaluation<'_, '_, '_> = eval_builder.build();
+
+        println!("{:?}", evaluator.source_map());
+        // let res = evaluator.evaluate(&self.program, None);
+        // println!("result of prog {} is {}", &self.program, res.value.unwrap());
     }
 }
 

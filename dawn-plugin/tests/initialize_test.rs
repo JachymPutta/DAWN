@@ -1,10 +1,10 @@
 use std::time::Duration;
 
-use dawn_bindings::backend::TvixBackend;
 use dawn_infra::codec::DebugAdapterCodec;
 use dawn_infra::debugger::{Client, DebugAdapter};
 use dawn_plugin::nix_debugger::{NixDebugAdapter, NixDebugState};
-use dawn_plugin::run_debugger;
+use dawn_plugin::run_debug_adapter;
+use tvix_debugger::backend::TvixBackend;
 
 use debug_types::requests::{InitializeRequestArguments, RequestCommand};
 use debug_types::{MessageKind, ProtocolMessage};
@@ -18,7 +18,7 @@ async fn test_initialize_request() {
     let (client_input, adapter_output) = tokio::io::duplex(1024);
     let (adapter_input, client_output) = tokio::io::duplex(1024);
 
-    let _task = tokio::spawn(run_debugger(adapter_input, adapter_output));
+    let _task = tokio::spawn(run_debug_adapter(adapter_input, adapter_output));
 
     let writer = FramedWrite::new(
         client_input,
@@ -62,7 +62,7 @@ async fn test_initialize_request_json() {
     let (adapter_output, client_output) = tokio::io::duplex(1024);
 
     // spawn the debugger loop
-    let _task = tokio::spawn(run_debugger(adapter_input, adapter_output));
+    let _task = tokio::spawn(run_debug_adapter(adapter_input, adapter_output));
 
     let mut writer = FramedWrite::new(
         client_input,
