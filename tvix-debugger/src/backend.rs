@@ -1,9 +1,11 @@
 use std::path::PathBuf;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread::JoinHandle;
 
 use debug_types::types::Capabilities;
 use tvix_eval::{EvalMode, Evaluation, SourceCode};
 
-use crate::commands::{Command, CommandReply};
+use crate::commands::{Command, CommandReply, ObserverCommand, ObserverReply};
 use crate::config::Args;
 use crate::observer::DebugObserver;
 
@@ -11,19 +13,42 @@ use crate::observer::DebugObserver;
 pub struct TvixBackend {
     code_path: PathBuf,
     code: SourceCode,
-    observer: DebugObserver,
+    observer_handle: JoinHandle<()>, // cur_state: _stack (Value)
+    receiver: Receiver<ObserverReply>,
+    sender: Sender<ObserverCommand>,
 }
 
 impl TvixBackend {
     pub fn new(args: Args) -> Self {
+        let (backend_sender, observer_reciever) = mpsc::channel::<ObserverCommand>();
+        let (observer_sender, backend_reciever) = mpsc::channel::<ObserverReply>();
+        let breakpoints = Vec::new();
         let code = SourceCode::default();
         let code_path = args.program.clone();
-        code.add_file("main".to_string(), args.program.to_str().unwrap().into());
-        let observer = DebugObserver::new();
+
+        let observer_handle = std::thread::spawn(move || {
+            let code = SourceCode::default();
+            let code_path = args.program.clone();
+            code.add_file("main".to_string(), args.program.to_str().unwrap().into());
+            let mut observer = DebugObserver::new(breakpoints, observer_reciever, observer_sender);
+            let eval = Evaluation::builder_impure()
+                .mode(EvalMode::Strict)
+                .with_source_map(code.clone())
+                .runtime_observer(Some(&mut observer))
+                .build();
+            let code = std::fs::read_to_string(&code_path).expect(&format!(
+                "Error opening file: {}",
+                &code_path.to_str().unwrap()
+            ));
+            let result = eval.evaluate(code, Some(code_path.clone()));
+        });
+
         TvixBackend {
             code_path,
             code,
-            observer,
+            observer_handle,
+            receiver: backend_reciever,
+            sender: backend_sender,
         }
     }
 }
@@ -53,19 +78,8 @@ impl TvixBackend {
     }
 
     fn launch(&mut self) {
-        let eval = Evaluation::builder_impure()
-            .mode(EvalMode::Strict)
-            .with_source_map(self.code.clone())
-            .runtime_observer(Some(&mut self.observer))
-            .build();
-        let code = std::fs::read_to_string(&self.code_path).expect(&format!(
-            "Error opening file: {}",
-            &self.code_path.to_str().unwrap()
-        ));
-        println!("{:?}", eval.source_map());
-        let result = eval.evaluate(code, Some(self.code_path.clone()));
-
-        println!("{:?}", result.value);
+        // println!("{:?}", result.value);
+        let _ = self.sender.send(ObserverCommand::Continue);
         // let res = evaluator.evaluate(&self.program, None);
         // println!("result of prog {} is {}", &self.program, res.value.unwrap());
     }

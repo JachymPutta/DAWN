@@ -1,27 +1,68 @@
+use std::sync::mpsc::{self, Receiver, Sender};
+
 use tvix_eval::{
     observer::RuntimeObserver,
     opcode::{CodeIdx, Op},
     value::Lambda,
 };
 
-pub struct DebugObserver;
+use crate::commands::{ObserverCommand, ObserverReply};
+
+type Breakpoint = i32;
+
+pub struct DebugObserver {
+    breakpoints: Vec<Breakpoint>,
+    receiver: Receiver<ObserverCommand>,
+    sender: Sender<ObserverReply>,
+}
 
 impl DebugObserver {
-    pub fn new() -> Self {
-        DebugObserver
+    pub fn new(
+        breakpoints: Vec<Breakpoint>,
+        receiver: Receiver<ObserverCommand>,
+        sender: Sender<ObserverReply>,
+    ) -> Self {
+        DebugObserver {
+            breakpoints,
+            receiver,
+            sender,
+        }
     }
 }
 
 impl RuntimeObserver for DebugObserver {
     fn observe_enter_call_frame(
         &mut self,
-        _arg_count: usize,
-        _: &std::rc::Rc<Lambda>,
-        _call_depth: usize,
+        arg_count: usize,
+        lambda: &std::rc::Rc<Lambda>,
+        call_depth: usize,
     ) {
+        let cmd = self.receiver.recv();
+
+        let prefix = if arg_count == 0 {
+            "=== entering thunk "
+        } else {
+            "=== entering closure "
+        };
+
+        let name_str = if let Some(name) = &lambda.name {
+            format!("'{}' ", name)
+        } else {
+            String::new()
+        };
+
+        println!(
+            "{}{}in frame[{}] @ {:p} ===",
+            prefix, name_str, call_depth, *lambda
+        );
     }
 
-    fn observe_exit_call_frame(&mut self, _frame_at: usize, _stack: &[tvix_eval::Value]) {}
+    fn observe_exit_call_frame(&mut self, _frame_at: usize, _stack: &[tvix_eval::Value]) {
+        println!("{:?}", _stack);
+
+        // if frame in breakpoints
+        // user_input(stack)
+    }
 
     fn observe_suspend_call_frame(&mut self, _frame_at: usize, _stack: &[tvix_eval::Value]) {}
 

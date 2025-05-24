@@ -8,6 +8,7 @@ pub enum Command {
     Exit,
     Unknown,
     Initialize,
+    #[strum(serialize = "launch", serialize = "l")]
     Launch,
 }
 
@@ -18,4 +19,14 @@ pub enum CommandReply {
     UnknownReply,
     InitializeReply,
     LaunchReply,
+}
+
+#[derive(Debug)]
+pub enum ObserverCommand {
+    Continue,
+}
+
+#[derive(Debug)]
+pub enum ObserverReply {
+    Done,
 }
