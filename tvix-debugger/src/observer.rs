@@ -1,4 +1,4 @@
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender};
 
 use tvix_eval::{
     observer::RuntimeObserver,
@@ -6,14 +6,13 @@ use tvix_eval::{
     value::Lambda,
 };
 
-use crate::commands::{ObserverCommand, ObserverReply};
-
-type Breakpoint = i32;
+use crate::commands::{Breakpoint, ObserverCommand, ObserverReply};
 
 pub struct DebugObserver {
     breakpoints: Vec<Breakpoint>,
     receiver: Receiver<ObserverCommand>,
     sender: Sender<ObserverReply>,
+    cur_cmd: ObserverCommand,
 }
 
 impl DebugObserver {
@@ -26,6 +25,30 @@ impl DebugObserver {
             breakpoints,
             receiver,
             sender,
+            cur_cmd: ObserverCommand::Wait,
+        }
+    }
+
+    fn handle_command(&mut self, command: ObserverCommand) {
+        match command {
+            ObserverCommand::Wait => (),
+            ObserverCommand::Break(smol_str) => self.breakpoints.push(smol_str),
+            ObserverCommand::Continue | ObserverCommand::Step => self.cur_cmd = command,
+        }
+    }
+
+    fn is_breakpoint(&self, lambda: &std::rc::Rc<Lambda>) -> bool {
+        // TODO: implement this
+        // look up the span
+        // check if it's in breakpoints
+        println!(
+            "got name {:?} current name: {:?}",
+            self.breakpoints, lambda.name
+        );
+        if let Some(name) = &lambda.name {
+            self.breakpoints.contains(name)
+        } else {
+            false
         }
     }
 }
@@ -37,7 +60,20 @@ impl RuntimeObserver for DebugObserver {
         lambda: &std::rc::Rc<Lambda>,
         call_depth: usize,
     ) {
-        let cmd = self.receiver.recv();
+        if self.cur_cmd != ObserverCommand::Continue || self.is_breakpoint(lambda) {
+            let cmd = self.receiver.recv().unwrap();
+            self.handle_command(cmd);
+
+            //TODO: fix these replies
+            let reply = match self.cur_cmd {
+                ObserverCommand::Wait => ObserverReply::State,
+                ObserverCommand::Continue => ObserverReply::State,
+                ObserverCommand::Step => ObserverReply::State,
+                ObserverCommand::Break(_) => ObserverReply::State,
+            };
+
+            self.sender.send(reply).unwrap();
+        }
 
         let prefix = if arg_count == 0 {
             "=== entering thunk "

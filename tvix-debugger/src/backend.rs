@@ -57,12 +57,20 @@ impl TvixBackend {
     pub fn handle_command(&mut self, command: Command) -> CommandReply {
         match command {
             Command::Initialize => {
-                let _ = self.initialize();
+                let _ = self.handle_initialize();
                 CommandReply::InitializeReply
             }
             Command::Launch => {
-                self.launch();
+                self.handle_launch();
                 CommandReply::LaunchReply
+            }
+            Command::Step => {
+                self.handle_step();
+                CommandReply::StepReply
+            }
+            Command::Break(fn_name) => {
+                self.handle_break(fn_name);
+                CommandReply::BreakReply
             }
             _ => {
                 unreachable!("Unknown command in backend: {}", command)
@@ -70,18 +78,31 @@ impl TvixBackend {
         }
     }
 
-    fn initialize(&mut self) -> Capabilities {
+    fn handle_initialize(&mut self) -> Capabilities {
         Capabilities {
             supports_configuration_done_request: Some(true),
             ..default_capabilities()
         }
     }
 
-    fn launch(&mut self) {
+    fn handle_launch(&mut self) {
         // println!("{:?}", result.value);
         let _ = self.sender.send(ObserverCommand::Continue);
+        let state = self.receiver.recv();
+        println!("{:?}", state);
         // let res = evaluator.evaluate(&self.program, None);
         // println!("result of prog {} is {}", &self.program, res.value.unwrap());
+    }
+
+    fn handle_step(&mut self) {
+        let _ = self.sender.send(ObserverCommand::Step);
+        let state = self.receiver.recv();
+        println!("{:?}", state);
+    }
+
+    fn handle_break(&mut self, fn_name: String) {
+        println!("name: {}", fn_name);
+        let _ = self.sender.send(ObserverCommand::Break(fn_name.into()));
     }
 }
 

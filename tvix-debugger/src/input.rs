@@ -7,7 +7,10 @@ pub fn handle_input(read_line: &mut DefaultEditor) -> Command {
 
     match line {
         Ok(text) => match text.trim().parse::<Command>() {
-            Ok(cmd) => cmd,
+            Ok(cmd) => {
+                println!("got command {:?}", cmd);
+                cmd
+            }
             Err(_) => {
                 println!("Unknown command {}", text);
                 Command::Unknown
