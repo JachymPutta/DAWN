@@ -1,14 +1,21 @@
-use std::sync::mpsc::{Receiver, Sender};
+use std::{
+    path::PathBuf,
+    sync::mpsc::{Receiver, Sender},
+};
 
+use smol_str::SmolStr;
 use tvix_eval::{
     observer::RuntimeObserver,
     opcode::{CodeIdx, Op},
     value::Lambda,
+    SourceCode,
 };
 
 use crate::commands::{Breakpoint, ObserverCommand, ObserverReply};
 
 pub struct DebugObserver {
+    code_path: PathBuf,
+    source_code: SourceCode,
     breakpoints: Vec<Breakpoint>,
     receiver: Receiver<ObserverCommand>,
     sender: Sender<ObserverReply>,
@@ -17,11 +24,15 @@ pub struct DebugObserver {
 
 impl DebugObserver {
     pub fn new(
+        code_path: PathBuf,
+        source_code: SourceCode,
         breakpoints: Vec<Breakpoint>,
         receiver: Receiver<ObserverCommand>,
         sender: Sender<ObserverReply>,
     ) -> Self {
         DebugObserver {
+            code_path,
+            source_code,
             breakpoints,
             receiver,
             sender,
@@ -31,7 +42,7 @@ impl DebugObserver {
 
     fn handle_command(&mut self, command: ObserverCommand) {
         match command {
-            ObserverCommand::Wait => (),
+            ObserverCommand::Wait | ObserverCommand::Print(_) => (),
             ObserverCommand::Break(smol_str) => self.breakpoints.push(smol_str),
             ObserverCommand::Continue | ObserverCommand::Step => self.cur_cmd = command,
         }
@@ -50,6 +61,11 @@ impl DebugObserver {
         } else {
             false
         }
+    }
+
+    fn handle_print(&self, var_name: SmolStr, lambda: &std::rc::Rc<Lambda>) {
+        // TODO if the option is some, find that variable name in the lambda
+        // else print all the variable names
     }
 }
 
@@ -70,6 +86,7 @@ impl RuntimeObserver for DebugObserver {
                 ObserverCommand::Continue => ObserverReply::State,
                 ObserverCommand::Step => ObserverReply::State,
                 ObserverCommand::Break(_) => ObserverReply::State,
+                ObserverCommand::Print(_) => ObserverReply::State,
             };
 
             self.sender.send(reply).unwrap();

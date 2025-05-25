@@ -13,7 +13,8 @@ pub enum Command {
     Initialize,
     Launch,
     Step,
-    Break(String),
+    Break(SmolStr),
+    Print(SmolStr),
 }
 
 impl FromStr for Command {
@@ -34,7 +35,7 @@ impl FromStr for Command {
             "step" | "s" => Ok(Command::Step),
             "break" | "b" => {
                 if let Some(target) = arg {
-                    Ok(Command::Break(target.to_string()))
+                    Ok(Command::Break(target.into()))
                 } else {
                     println!("Err: break missing argument -- provide function name");
                     Err(()) // Or Command::Unknown if you prefer
@@ -61,6 +62,7 @@ pub enum ObserverCommand {
     Continue,
     Step,
     Break(Breakpoint),
+    Print(SmolStr),
 }
 
 #[derive(Debug)]

@@ -3,6 +3,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::JoinHandle;
 
 use debug_types::types::Capabilities;
+use smol_str::SmolStr;
 use tvix_eval::{EvalMode, Evaluation, SourceCode};
 
 use crate::commands::{Command, CommandReply, ObserverCommand, ObserverReply};
@@ -27,20 +28,30 @@ impl TvixBackend {
         let code_path = args.program.clone();
 
         let observer_handle = std::thread::spawn(move || {
-            let code = SourceCode::default();
+            let source_code = SourceCode::default();
             let code_path = args.program.clone();
-            code.add_file("main".to_string(), args.program.to_str().unwrap().into());
-            let mut observer = DebugObserver::new(breakpoints, observer_reciever, observer_sender);
+            source_code.add_file("main".to_string(), args.program.to_str().unwrap().into());
+
+            let code_path_ = args.program.clone();
+            let source_code_ = source_code.clone();
+
+            let mut observer = DebugObserver::new(
+                code_path,
+                source_code,
+                breakpoints,
+                observer_reciever,
+                observer_sender,
+            );
             let eval = Evaluation::builder_impure()
                 .mode(EvalMode::Strict)
-                .with_source_map(code.clone())
+                .with_source_map(source_code_.clone())
                 .runtime_observer(Some(&mut observer))
                 .build();
-            let code = std::fs::read_to_string(&code_path).expect(&format!(
+            let code = std::fs::read_to_string(&code_path_).expect(&format!(
                 "Error opening file: {}",
-                &code_path.to_str().unwrap()
+                &code_path_.to_str().unwrap()
             ));
-            let result = eval.evaluate(code, Some(code_path.clone()));
+            let result = eval.evaluate(code, Some(code_path_));
         });
 
         TvixBackend {
@@ -72,6 +83,10 @@ impl TvixBackend {
                 self.handle_break(fn_name);
                 CommandReply::BreakReply
             }
+            Command::Print(var_name) => {
+                self.handle_print(var_name);
+                CommandReply::BreakReply
+            }
             _ => {
                 unreachable!("Unknown command in backend: {}", command)
             }
@@ -100,9 +115,17 @@ impl TvixBackend {
         println!("{:?}", state);
     }
 
-    fn handle_break(&mut self, fn_name: String) {
+    fn handle_break(&mut self, fn_name: SmolStr) {
         println!("name: {}", fn_name);
-        let _ = self.sender.send(ObserverCommand::Break(fn_name.into()));
+        let _ = self.sender.send(ObserverCommand::Break(fn_name));
+    }
+
+    fn handle_print(&mut self, var_name: SmolStr) {
+        let _ = self.sender.send(ObserverCommand::Print(var_name));
+    }
+
+    pub fn exit(&mut self) {
+        // TODO: send exit to the evaluator, join the handle, return
     }
 }
 

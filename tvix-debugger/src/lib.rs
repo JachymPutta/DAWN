@@ -20,7 +20,11 @@ pub fn run_debugger(args: Args) {
         let command = handle_input(&mut read_line);
         match command {
             Command::Unknown => continue,
-            Command::Exit => break,
+            Command::Exit => {
+                backend.exit();
+                break;
+            }
+
             _ => {
                 let reply = backend.handle_command(command);
                 println!("{}", reply);
