@@ -40,24 +40,35 @@ impl DebugObserver {
         }
     }
 
-    fn handle_command(&mut self, command: ObserverCommand) {
-        match command {
-            ObserverCommand::Wait | ObserverCommand::Print(_) => (),
-            ObserverCommand::Break(smol_str) => self.breakpoints.push(smol_str),
-            ObserverCommand::Continue | ObserverCommand::Step => self.cur_cmd = command,
+    /// Handling the commands from the backend, can pause execution to wait for
+    /// more user input
+    fn await_command(&mut self, name: &Option<SmolStr>) {
+        if self.cur_cmd != ObserverCommand::Continue || self.is_breakpoint(name) {
+            let command = self.receiver.recv().unwrap();
+            match command {
+                ObserverCommand::Print(_smol_str) => (), // TODO: self.handle_print(smol_str, lambda),
+                ObserverCommand::Break(smol_str) => self.breakpoints.push(smol_str),
+                ObserverCommand::Continue | ObserverCommand::Step => self.cur_cmd = command,
+                ObserverCommand::Wait => (),
+            }
+
+            //TODO: fix these replies
+            // let reply = match self.cur_cmd {
+            //     ObserverCommand::Wait => ObserverReply::State,
+            //     ObserverCommand::Continue => ObserverReply::State,
+            //     ObserverCommand::Step => ObserverReply::State,
+            //     ObserverCommand::Break(_) => ObserverReply::State,
+            //     ObserverCommand::Print(_) => ObserverReply::State,
+            // };
+            //
+            // self.sender.send(reply).unwrap();
         }
     }
 
-    fn is_breakpoint(&self, lambda: &std::rc::Rc<Lambda>) -> bool {
-        // TODO: implement this
-        // look up the span
-        // check if it's in breakpoints
-        println!(
-            "got name {:?} current name: {:?}",
-            self.breakpoints, lambda.name
-        );
-        if let Some(name) = &lambda.name {
-            self.breakpoints.contains(name)
+    fn is_breakpoint(&self, name: &Option<SmolStr>) -> bool {
+        // println!("got name {:?} current name: {:?}", self.breakpoints, name);
+        if let Some(name_val) = name {
+            self.breakpoints.contains(name_val)
         } else {
             false
         }
@@ -76,21 +87,7 @@ impl RuntimeObserver for DebugObserver {
         lambda: &std::rc::Rc<Lambda>,
         call_depth: usize,
     ) {
-        if self.cur_cmd != ObserverCommand::Continue || self.is_breakpoint(lambda) {
-            let cmd = self.receiver.recv().unwrap();
-            self.handle_command(cmd);
-
-            //TODO: fix these replies
-            let reply = match self.cur_cmd {
-                ObserverCommand::Wait => ObserverReply::State,
-                ObserverCommand::Continue => ObserverReply::State,
-                ObserverCommand::Step => ObserverReply::State,
-                ObserverCommand::Break(_) => ObserverReply::State,
-                ObserverCommand::Print(_) => ObserverReply::State,
-            };
-
-            self.sender.send(reply).unwrap();
-        }
+        self.await_command(&lambda.name);
 
         let prefix = if arg_count == 0 {
             "=== entering thunk "
@@ -130,9 +127,10 @@ impl RuntimeObserver for DebugObserver {
     fn observe_exit_generator(
         &mut self,
         _frame_at: usize,
-        _name: &str,
+        name: &str,
         _stack: &[tvix_eval::Value],
     ) {
+        self.await_command(&Some(name.into()));
     }
 
     fn observe_suspend_generator(

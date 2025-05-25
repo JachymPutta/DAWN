@@ -11,6 +11,7 @@ pub enum Command {
     Exit,
     Unknown,
     Initialize,
+    Continue,
     Launch,
     Step,
     Break(SmolStr),
@@ -30,6 +31,7 @@ impl FromStr for Command {
 
         match cmd.as_str() {
             "exit" | "e" => Ok(Command::Exit),
+            "continue" | "c" => Ok(Command::Continue),
             "initialize" | "init" | "i" => Ok(Command::Initialize),
             "launch" | "l" => Ok(Command::Launch),
             "step" | "s" => Ok(Command::Step),
@@ -54,6 +56,7 @@ pub enum CommandReply {
     LaunchReply,
     StepReply,
     BreakReply,
+    ContinueReply,
 }
 
 #[derive(Debug, PartialEq, Eq)]

@@ -51,7 +51,7 @@ impl TvixBackend {
                 "Error opening file: {}",
                 &code_path_.to_str().unwrap()
             ));
-            let result = eval.evaluate(code, Some(code_path_));
+            let _result = eval.evaluate(code, Some(code_path_));
         });
 
         TvixBackend {
@@ -87,6 +87,10 @@ impl TvixBackend {
                 self.handle_print(var_name);
                 CommandReply::BreakReply
             }
+            Command::Continue => {
+                self.handle_continue();
+                CommandReply::LaunchReply
+            }
             _ => {
                 unreachable!("Unknown command in backend: {}", command)
             }
@@ -101,18 +105,18 @@ impl TvixBackend {
     }
 
     fn handle_launch(&mut self) {
-        // println!("{:?}", result.value);
         let _ = self.sender.send(ObserverCommand::Continue);
-        let state = self.receiver.recv();
-        println!("{:?}", state);
-        // let res = evaluator.evaluate(&self.program, None);
-        // println!("result of prog {} is {}", &self.program, res.value.unwrap());
+        // let state = self.receiver.recv();
+    }
+
+    fn handle_continue(&mut self) {
+        let _ = self.sender.send(ObserverCommand::Continue);
     }
 
     fn handle_step(&mut self) {
         let _ = self.sender.send(ObserverCommand::Step);
-        let state = self.receiver.recv();
-        println!("{:?}", state);
+        // let state = self.receiver.recv();
+        // println!("{:?}", state);
     }
 
     fn handle_break(&mut self, fn_name: SmolStr) {
