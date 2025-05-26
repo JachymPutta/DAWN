@@ -1,5 +1,5 @@
 use atomic_enum::atomic_enum;
-use tokio::io::{AsyncRead, AsyncWrite, Stdin, Stdout};
+use tokio::io::{AsyncRead, AsyncWrite};
 
 use debug_types::{
     events::{Event, EventBody},

@@ -14,7 +14,7 @@ use crate::observer::DebugObserver;
 pub struct TvixBackend {
     code_path: PathBuf,
     code: SourceCode,
-    observer_handle: JoinHandle<()>, // cur_state: _stack (Value)
+    observer_handle: JoinHandle<()>,
     receiver: Receiver<ObserverReply>,
     sender: Sender<ObserverCommand>,
 }
@@ -32,26 +32,23 @@ impl TvixBackend {
             let code_path = args.program.clone();
             source_code.add_file("main".to_string(), args.program.to_str().unwrap().into());
 
-            let code_path_ = args.program.clone();
-            let source_code_ = source_code.clone();
-
-            let mut observer = DebugObserver::new(
-                code_path,
-                source_code,
-                breakpoints,
-                observer_reciever,
-                observer_sender,
-            );
+            let mut observer = DebugObserver::new(breakpoints, observer_reciever, observer_sender);
             let eval = Evaluation::builder_impure()
                 .mode(EvalMode::Strict)
-                .with_source_map(source_code_.clone())
+                .with_source_map(source_code.clone())
                 .runtime_observer(Some(&mut observer))
                 .build();
-            let code = std::fs::read_to_string(&code_path_).expect(&format!(
+            let code = std::fs::read_to_string(&code_path).expect(&format!(
                 "Error opening file: {}",
-                &code_path_.to_str().unwrap()
+                &code_path.to_str().unwrap()
             ));
-            let _result = eval.evaluate(code, Some(code_path_));
+            let result = eval.evaluate(code, Some(code_path));
+            println!("Execution done: {:?}", result);
+            observer.set_cmd(ObserverCommand::Done);
+
+            loop {
+                observer.await_command(&None);
+            }
         });
 
         TvixBackend {
@@ -85,7 +82,7 @@ impl TvixBackend {
             }
             Command::Print(var_name) => {
                 self.handle_print(var_name);
-                CommandReply::BreakReply
+                CommandReply::PrintReply
             }
             Command::Continue => {
                 self.handle_continue();
@@ -105,7 +102,7 @@ impl TvixBackend {
     }
 
     fn handle_launch(&mut self) {
-        let _ = self.sender.send(ObserverCommand::Continue);
+        let _ = self.sender.send(ObserverCommand::Launch);
         // let state = self.receiver.recv();
     }
 
@@ -115,8 +112,6 @@ impl TvixBackend {
 
     fn handle_step(&mut self) {
         let _ = self.sender.send(ObserverCommand::Step);
-        // let state = self.receiver.recv();
-        // println!("{:?}", state);
     }
 
     fn handle_break(&mut self, fn_name: SmolStr) {

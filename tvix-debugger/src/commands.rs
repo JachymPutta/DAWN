@@ -43,6 +43,14 @@ impl FromStr for Command {
                     Err(()) // Or Command::Unknown if you prefer
                 }
             }
+            "print" | "p" => {
+                if let Some(target) = arg {
+                    Ok(Command::Print(target.into()))
+                } else {
+                    println!("Err: print missing argument -- provide variable name");
+                    Err(()) // Or Command::Unknown if you prefer
+                }
+            }
             _ => Ok(Command::Unknown),
         }
     }
@@ -56,12 +64,15 @@ pub enum CommandReply {
     LaunchReply,
     StepReply,
     BreakReply,
+    PrintReply,
     ContinueReply,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ObserverCommand {
     Wait,
+    Done,
+    Launch,
     Continue,
     Step,
     Break(Breakpoint),
