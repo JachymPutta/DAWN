@@ -32,10 +32,15 @@ impl TvixBackend {
             let code_path = args.program.clone();
             source_code.add_file("main".to_string(), args.program.to_str().unwrap().into());
 
-            let mut observer = DebugObserver::new(breakpoints, observer_reciever, observer_sender);
+            let mut observer = DebugObserver::new(
+                source_code.clone(),
+                breakpoints,
+                observer_reciever,
+                observer_sender,
+            );
             let eval = Evaluation::builder_impure()
                 .mode(EvalMode::Strict)
-                .with_source_map(source_code.clone())
+                .with_source_map(source_code)
                 .runtime_observer(Some(&mut observer))
                 .build();
             let code = std::fs::read_to_string(&code_path).expect(&format!(

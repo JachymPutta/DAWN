@@ -1,11 +1,15 @@
-use std::sync::mpsc::{Receiver, Sender};
+use std::{
+    fmt::Display,
+    sync::mpsc::{Receiver, Sender},
+};
 
 use smol_str::SmolStr;
 use tvix_eval::{
+    chunk::SourceSpan,
     observer::RuntimeObserver,
     opcode::{CodeIdx, Op},
     value::Lambda,
-    Value,
+    SourceCode, Value,
 };
 
 use crate::commands::{Breakpoint, ObserverCommand, ObserverReply};
@@ -15,9 +19,19 @@ use crate::commands::{Breakpoint, ObserverCommand, ObserverReply};
 struct ProgramState {
     lambda: Option<std::rc::Rc<Lambda>>,
     stack: Vec<tvix_eval::Value>,
+    ip: usize,
+}
+
+impl Display for ProgramState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let _ = write!(f, "cur lambda:\n {:?}\n", self.lambda);
+        let _ = write!(f, "cur stack:\n {:?}\n", self.stack);
+        Ok(())
+    }
 }
 
 pub struct DebugObserver {
+    code: SourceCode,
     breakpoints: Vec<Breakpoint>,
     receiver: Receiver<ObserverCommand>,
     _sender: Sender<ObserverReply>,
@@ -27,11 +41,13 @@ pub struct DebugObserver {
 
 impl DebugObserver {
     pub fn new(
+        code: SourceCode,
         breakpoints: Vec<Breakpoint>,
         receiver: Receiver<ObserverCommand>,
         _sender: Sender<ObserverReply>,
     ) -> Self {
         DebugObserver {
+            code,
             breakpoints,
             receiver,
             _sender,
@@ -39,6 +55,7 @@ impl DebugObserver {
             cur_state: ProgramState {
                 lambda: None,
                 stack: vec![],
+                ip: 0,
             },
         }
     }
@@ -71,6 +88,27 @@ impl DebugObserver {
         }
     }
 
+    fn print_current_source(&self) {
+        let lambda = self.cur_state.lambda.as_ref().unwrap();
+        let spans = &lambda.chunk.spans;
+        if let Some(source_span) = spans
+            .iter()
+            .filter(|s| s.start <= self.cur_state.ip)
+            .max_by_key(|s| s.start)
+        {
+            let span = source_span.span;
+            let codemap = self.code.codemap();
+
+            // Look up the file containing the span
+            let file = codemap.find_file(span.low());
+
+            // Ask the file to extract the source snippet for the span
+            let snippet = file.source_slice(span);
+
+            println!("→ Currently evaluating: {}", snippet);
+        }
+    }
+
     fn is_breakpoint(&self, name: &Option<SmolStr>) -> bool {
         // println!("got name {:?} current name: {:?}", self.breakpoints, name);
         if let Some(name_val) = name {
@@ -90,12 +128,12 @@ impl DebugObserver {
 
     fn handle_step(&mut self) {
         self.cur_cmd = ObserverCommand::Step;
+        self.print_current_source();
     }
 
     fn handle_print(&self, var_name: SmolStr) {
         // TODO if the option is some, find that variable name in the lambda
         // else print all the variable names
-        //
         if let Some(lambda) = &self.cur_state.lambda {
             if let Some(name) = &lambda.name {
                 if *name == var_name {
@@ -141,10 +179,10 @@ impl RuntimeObserver for DebugObserver {
         //     (lambda.name.clone()).unwrap_or("hello".into())
         // );
         self.cur_state.lambda = Some(lambda.to_owned());
-        // self.await_command(&lambda.name);
     }
 
     fn observe_exit_call_frame(&mut self, _frame_at: usize, stack: &[tvix_eval::Value]) {
+        // println!("{}", self.cur_state);
         self.cur_state.stack = stack.to_owned();
         self.await_command(&None);
     }
@@ -184,5 +222,7 @@ impl RuntimeObserver for DebugObserver {
 
     fn observe_exit_builtin(&mut self, _name: &'static str, _stack: &[tvix_eval::Value]) {}
 
-    fn observe_execute_op(&mut self, _ip: CodeIdx, _: &Op, _: &[tvix_eval::Value]) {}
+    fn observe_execute_op(&mut self, ip: CodeIdx, _: &Op, _: &[tvix_eval::Value]) {
+        self.cur_state.ip = ip.0;
+    }
 }
