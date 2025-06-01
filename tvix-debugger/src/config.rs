@@ -11,8 +11,11 @@ pub struct Args {
 }
 
 impl Args {
-    // FIXME maybe this should error out instead of mutating args
     pub fn validate(&mut self) {
-        //TODO: check that the program is a valid path
+        assert!(
+            self.program.is_file() && self.program.extension() == Some(std::ffi::OsStr::new("nix")),
+            "Expected a .nix file, but got: {:?}",
+            self.program
+        );
     }
 }

@@ -6,7 +6,7 @@ use debug_types::types::Capabilities;
 use smol_str::SmolStr;
 use tvix_eval::{EvalMode, Evaluation, SourceCode};
 
-use crate::commands::{Command, CommandReply, ObserverCommand, ObserverReply};
+use crate::commands::{Breakpoint, Command, CommandReply, ObserverCommand, ObserverReply};
 use crate::config::Args;
 use crate::observer::DebugObserver;
 
@@ -23,21 +23,21 @@ impl TvixBackend {
     pub fn new(args: Args) -> Self {
         let (backend_sender, observer_reciever) = mpsc::channel::<ObserverCommand>();
         let (observer_sender, backend_reciever) = mpsc::channel::<ObserverReply>();
-        let breakpoints = Vec::new();
         let code = SourceCode::default();
         let code_path = args.program.clone();
 
         let observer_handle = std::thread::spawn(move || {
             let source_code = SourceCode::default();
             let code_path = args.program.clone();
-            source_code.add_file("main".to_string(), args.program.to_str().unwrap().into());
+            let file_name = code_path.file_name().unwrap().to_os_string();
 
-            let mut observer = DebugObserver::new(
-                source_code.clone(),
-                breakpoints,
-                observer_reciever,
-                observer_sender,
+            source_code.add_file(
+                file_name.into_string().unwrap(),
+                args.program.to_str().unwrap().into(),
             );
+
+            let mut observer =
+                DebugObserver::new(source_code.clone(), observer_reciever, observer_sender);
             let eval = Evaluation::builder_impure()
                 .mode(EvalMode::Strict)
                 .with_source_map(source_code)
@@ -52,7 +52,7 @@ impl TvixBackend {
             observer.set_cmd(ObserverCommand::Done);
 
             loop {
-                observer.await_command(&None);
+                observer.await_command();
             }
         });
 
@@ -81,8 +81,8 @@ impl TvixBackend {
                 self.handle_step();
                 CommandReply::StepReply
             }
-            Command::Break(fn_name) => {
-                self.handle_break(fn_name);
+            Command::Break(breakpoint) => {
+                self.handle_break(breakpoint);
                 CommandReply::BreakReply
             }
             Command::Print(var_name) => {
@@ -119,9 +119,9 @@ impl TvixBackend {
         let _ = self.sender.send(ObserverCommand::Step);
     }
 
-    fn handle_break(&mut self, fn_name: SmolStr) {
-        println!("name: {}", fn_name);
-        let _ = self.sender.send(ObserverCommand::Break(fn_name));
+    fn handle_break(&mut self, breakpoint: Breakpoint) {
+        println!("got breakpoint: {:?}", &breakpoint);
+        let _ = self.sender.send(ObserverCommand::Break(breakpoint));
     }
 
     fn handle_print(&mut self, var_name: SmolStr) {

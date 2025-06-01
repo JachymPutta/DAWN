@@ -1,14 +1,16 @@
 use std::{
+    collections::{HashMap, HashSet},
     fmt::Display,
     sync::mpsc::{Receiver, Sender},
 };
 
+use codemap::Span;
 use smol_str::SmolStr;
 use tvix_eval::{
     chunk::SourceSpan,
     observer::RuntimeObserver,
     opcode::{CodeIdx, Op},
-    value::Lambda,
+    value::{self, Lambda},
     SourceCode, Value,
 };
 
@@ -22,6 +24,20 @@ struct ProgramState {
     ip: usize,
 }
 
+struct BreakPoints {
+    breakpoints: HashSet<usize>,
+    source_id: HashMap<SourceSpan, usize>,
+}
+
+impl Default for BreakPoints {
+    fn default() -> Self {
+        BreakPoints {
+            breakpoints: HashSet::default(),
+            source_id: HashMap::default(),
+        }
+    }
+}
+
 impl Display for ProgramState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let _ = write!(f, "cur lambda:\n {:?}\n", self.lambda);
@@ -32,7 +48,7 @@ impl Display for ProgramState {
 
 pub struct DebugObserver {
     code: SourceCode,
-    breakpoints: Vec<Breakpoint>,
+    breakpoints: BreakPoints,
     receiver: Receiver<ObserverCommand>,
     _sender: Sender<ObserverReply>,
     cur_cmd: ObserverCommand,
@@ -42,10 +58,10 @@ pub struct DebugObserver {
 impl DebugObserver {
     pub fn new(
         code: SourceCode,
-        breakpoints: Vec<Breakpoint>,
         receiver: Receiver<ObserverCommand>,
         _sender: Sender<ObserverReply>,
     ) -> Self {
+        let breakpoints = BreakPoints::default();
         DebugObserver {
             code,
             breakpoints,
@@ -66,9 +82,9 @@ impl DebugObserver {
 
     /// Handling the commands from the backend, can pause execution to wait for
     /// more user input
-    pub fn await_command(&mut self, name: &Option<SmolStr>) {
+    pub fn await_command(&mut self) {
         // Only stop when we hit a breakpoint || step through the program
-        if self.cur_cmd != ObserverCommand::Continue || self.is_breakpoint(name) {
+        if self.cur_cmd != ObserverCommand::Continue || self.is_breakpoint() {
             let command = self.receiver.recv().unwrap();
 
             if self.cur_cmd == ObserverCommand::Wait && command != ObserverCommand::Launch {
@@ -91,31 +107,37 @@ impl DebugObserver {
     fn print_current_source(&self) {
         let lambda = self.cur_state.lambda.as_ref().unwrap();
         let spans = &lambda.chunk.spans;
-        if let Some(source_span) = spans
-            .iter()
-            .filter(|s| s.start <= self.cur_state.ip)
-            .max_by_key(|s| s.start)
-        {
-            let span = source_span.span;
-            let codemap = self.code.codemap();
 
-            // Look up the file containing the span
-            let file = codemap.find_file(span.low());
+        println!("Lambda chunks spans");
+        for span in spans {
+            let snippet = self.code.source_slice(span.span);
+            let line = self.code.get_line(span.span);
 
-            // Ask the file to extract the source snippet for the span
-            let snippet = file.source_slice(span);
-
-            println!("→ Currently evaluating: {}", snippet);
+            println!("snippet: {}, on line {}", snippet, line);
         }
+
+        println!("Constants");
+        // if let Some(source_span) = spans
+        //     .iter()
+        //     .filter(|s| s.start <= self.cur_state.ip)
+        //     .max_by_key(|s| s.start)
+        // {
+        //     let span = source_span.span;
+        //     let codemap = self.code.codemap();
+        //
+        //     // Look up the file containing the span
+        //     let file = codemap.find_file(span.low());
+        //
+        //     // Ask the file to extract the source snippet for the span
+        //     let snippet = file.source_slice(span);
+        //
+        //     println!("IP: {}, Cur snippet: {}", self.cur_state.ip, snippet);
+        // }
     }
 
-    fn is_breakpoint(&self, name: &Option<SmolStr>) -> bool {
-        // println!("got name {:?} current name: {:?}", self.breakpoints, name);
-        if let Some(name_val) = name {
-            self.breakpoints.contains(name_val)
-        } else {
-            false
-        }
+    fn is_breakpoint(&self) -> bool {
+        let ip = self.cur_state.ip;
+        self.breakpoints.breakpoints.contains(&ip)
     }
 
     fn handle_launch(&mut self) {
@@ -129,6 +151,7 @@ impl DebugObserver {
     fn handle_step(&mut self) {
         self.cur_cmd = ObserverCommand::Step;
         self.print_current_source();
+        println!("{}", self.cur_state);
     }
 
     fn handle_print(&self, var_name: SmolStr) {
@@ -162,8 +185,42 @@ impl DebugObserver {
         println!("looking for {}", var_name);
     }
 
-    fn handle_break(&mut self, breakpoint_name: SmolStr) {
-        self.breakpoints.push(breakpoint_name);
+    fn handle_break(&mut self, breakpoint: Breakpoint) {
+        let line = match breakpoint {
+            Breakpoint::Line(line) => line,
+            Breakpoint::FileLine { file, line } => line,
+        };
+
+        let _ = self.breakpoints.breakpoints.insert(line);
+
+        // let lambda = self.cur_state.lambda.as_ref().unwrap();
+        // let spans = &lambda.chunk.spans;
+        // for span in spans {
+        //     let snippet = self.code.source_slice(span.span);
+        //     let cur_line = self.code.get_line(span.span);
+        //
+        //     if cur_line == line {
+        //         println!("FOUND BREAKPOINT ON: {}, on line {}", snippet, line);
+        //     }
+        // }
+
+        // if let Some(source_span) = spans
+        //     .iter()
+        //     .filter(|s| s.start <= self.cur_state.ip)
+        //     .max_by_key(|s| s.start)
+        // {
+        //     let span = source_span.span;
+        //     let codemap = self.code.codemap();
+        //
+        //     // Look up the file containing the span
+        //     let file = codemap.find_file(span.low());
+        //
+        //     // Ask the file to extract the source snippet for the span
+        //     let snippet = file.source_slice(span);
+        //
+        //     println!("IP: {}, Cur snippet: {}", self.cur_state.ip, snippet);
+        // }
+        // self.breakpoints.push(breakpoint_name);
     }
 }
 
@@ -184,7 +241,7 @@ impl RuntimeObserver for DebugObserver {
     fn observe_exit_call_frame(&mut self, _frame_at: usize, stack: &[tvix_eval::Value]) {
         // println!("{}", self.cur_state);
         self.cur_state.stack = stack.to_owned();
-        self.await_command(&None);
+        // self.await_command();
     }
 
     fn observe_suspend_call_frame(&mut self, _frame_at: usize, _stack: &[tvix_eval::Value]) {}
@@ -199,19 +256,23 @@ impl RuntimeObserver for DebugObserver {
         // self.await_command(&Some(name.into()));
     }
 
-    fn observe_exit_generator(&mut self, _frame_at: usize, name: &str, stack: &[tvix_eval::Value]) {
+    fn observe_exit_generator(
+        &mut self,
+        _frame_at: usize,
+        _name: &str,
+        stack: &[tvix_eval::Value],
+    ) {
         self.cur_state.stack = stack.to_owned();
-        self.await_command(&Some(name.into()));
+        // self.await_command();
     }
 
     fn observe_suspend_generator(
         &mut self,
         _frame_at: usize,
-        name: &str,
+        _name: &str,
         stack: &[tvix_eval::Value],
     ) {
         self.cur_state.stack = stack.to_owned();
-        self.await_command(&Some(name.into()));
     }
 
     fn observe_generator_request(&mut self, _name: &str, _msg: &tvix_eval::generators::VMRequest) {}
@@ -222,7 +283,15 @@ impl RuntimeObserver for DebugObserver {
 
     fn observe_exit_builtin(&mut self, _name: &'static str, _stack: &[tvix_eval::Value]) {}
 
-    fn observe_execute_op(&mut self, ip: CodeIdx, _: &Op, _: &[tvix_eval::Value]) {
+    fn observe_execute_op(&mut self, span: &Span, ip: CodeIdx, _: &Op, _: &[tvix_eval::Value]) {
+        let line = self.code.get_line(*span);
+
+        if self.breakpoints.breakpoints.contains(&line) {
+            self.cur_cmd = ObserverCommand::Step;
+            self.breakpoints.breakpoints.remove(&line);
+        }
+
         self.cur_state.ip = ip.0;
+        self.await_command();
     }
 }

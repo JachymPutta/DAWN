@@ -1795,6 +1795,8 @@ name = "tvix-debugger"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "codemap",
+ "codemap-diagnostic",
  "dawn-infra",
  "debug_types",
  "either",

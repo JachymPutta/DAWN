@@ -3,8 +3,29 @@ use std::str::FromStr;
 use strum::Display;
 use strum_macros::EnumString;
 
-pub(crate) type Breakpoint = SmolStr; //TODO: change to Either<SmolStr, i32> to set breakpoints on a line
-                                      //number or function
+// TODO: support breakpoints on variable names
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Breakpoint {
+    Line(usize),
+    FileLine { file: SmolStr, line: usize },
+}
+
+impl FromStr for Breakpoint {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some((file, line)) = s.split_once(':') {
+            line.parse::<usize>()
+                .map(|l| Breakpoint::FileLine {
+                    file: file.into(),
+                    line: l,
+                })
+                .map_err(|_| ())
+        } else {
+            s.parse::<usize>().map(Breakpoint::Line).map_err(|_| ())
+        }
+    }
+}
 
 #[derive(Debug, Display)]
 pub enum Command {
@@ -14,7 +35,7 @@ pub enum Command {
     Continue,
     Launch,
     Step,
-    Break(SmolStr),
+    Break(Breakpoint),
     Print(SmolStr),
 }
 
@@ -37,7 +58,8 @@ impl FromStr for Command {
             "step" | "s" => Ok(Command::Step),
             "break" | "b" => {
                 if let Some(target) = arg {
-                    Ok(Command::Break(target.into()))
+                    // TODO: don't explode in case of invalid string
+                    Ok(Command::Break(target.parse().unwrap()))
                 } else {
                     println!("Err: break missing argument -- provide function name");
                     Err(()) // Or Command::Unknown if you prefer
