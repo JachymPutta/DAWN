@@ -52,7 +52,7 @@ impl TvixBackend {
             observer.set_cmd(ObserverCommand::Done);
 
             loop {
-                observer.await_command();
+                observer.handle_command();
             }
         });
 
