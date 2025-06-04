@@ -6,20 +6,17 @@ use debug_types::{
 };
 use either::Either;
 
-use dawn_infra::{
-    backend::DebugBackend,
-    debugger::{Client, DebugAdapter, State},
-};
+use dawn_infra::debugger::{Client, DebugAdapter, State};
 use debug_types::requests::RequestCommand::{
     BreakpointLocations, ConfigurationDone, Disconnect, Initialize, Launch,
 };
 use nll::nll_todo::nll_todo;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::error;
+use tvix_debugger::{backend::TvixBackend, commands::CommandReply};
 
-impl<B, R, W> DebugAdapter for NixDebugAdapter<B, R, W>
+impl<R, W> DebugAdapter for NixDebugAdapter<R, W>
 where
-    B: DebugBackend,
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
@@ -47,15 +44,29 @@ where
     }
 }
 
-impl<B, R, W> NixDebugAdapter<B, R, W>
+impl<R, W> NixDebugAdapter<R, W>
 where
-    B: DebugBackend,
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
     /// handler for receipt of initialize event from client
     async fn handle_initialize(&mut self, seq: i64, args: InitializeRequestArguments) {
-        let capabilities = self.debugger.initialize(args);
+        let debugger_args = tvix_debugger::config::Args {
+            program: "tvix-debugger/tests/simple_fn_call.nix".into(),
+        };
+        let debugger = TvixBackend::new(debugger_args);
+        self.debugger = Some(debugger);
+        let capabilities = if let CommandReply::InitializeReply(capabilities) = self
+            .debugger
+            .as_mut()
+            .unwrap()
+            .handle_command(tvix_debugger::commands::Command::Initialize)
+        {
+            capabilities
+        } else {
+            panic!("Error: initializing backend")
+        };
+
         let response = InitializeResponse { capabilities };
 
         let body = Some(ResponseBody::Initialize(response));
@@ -123,7 +134,7 @@ where
         };
 
         // error!("launch args: {args:?}");
-        self.debugger.launch(args);
+        // self.debugger.launch(args);
         // TODO some argument checking I think
         self.client
             .send(Either::Right(Response {
@@ -192,18 +203,17 @@ where
 }
 
 /// overarching struct holding dap state and comms
-pub struct NixDebugAdapter<B, R, W>
+pub struct NixDebugAdapter<R, W>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
-    B: DebugBackend,
 {
     /// the comms
     pub client: Client<R, W>,
     /// the state
     pub state: NixDebugState,
     /// the debugger
-    pub debugger: B,
+    pub debugger: Option<TvixBackend>,
 }
 
 /// the debug state

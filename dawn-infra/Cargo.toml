@@ -36,3 +36,5 @@ tower-lsp = { version = "0.20.0" }
 tower-service = "0.3.3"
 
 atomic_enum = "0.3.0"
+
+tvix-debugger = { path = "../tvix-debugger" }

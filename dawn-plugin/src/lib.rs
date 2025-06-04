@@ -15,7 +15,6 @@ use debug_types::ProtocolMessage;
 use nix_debugger::{NixDebugAdapter, NixDebugState};
 use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::error;
-use tvix_debugger::backend::TvixBackend;
 
 /// debugger
 pub mod nix_debugger;
@@ -34,7 +33,7 @@ where
     let mut adapter = NixDebugAdapter {
         client,
         state: NixDebugState::default(),
-        debugger: TvixBackend::new(),
+        debugger: None,
     };
     println!("Adapter initialized, entering message loop");
 

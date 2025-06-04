@@ -50,7 +50,7 @@ async fn test_initialize_request() {
     let mut adapter = NixDebugAdapter {
         client,
         state: NixDebugState::default(),
-        debugger: TvixBackend::new(),
+        debugger: Some(TvixBackend::new()),
     };
 
     adapter.handle_request(1, init_req).await;

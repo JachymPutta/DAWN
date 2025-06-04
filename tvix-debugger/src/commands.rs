@@ -1,3 +1,4 @@
+use debug_types::types::Capabilities;
 use smol_str::SmolStr;
 use std::str::FromStr;
 use strum::Display;
@@ -77,12 +78,12 @@ impl FromStr for Command {
         }
     }
 }
-#[derive(Debug, EnumString, Display)]
+#[derive(Debug, Display)]
 #[strum(serialize_all = "snake_case")]
 pub enum CommandReply {
     ExitReply,
     UnknownReply,
-    InitializeReply,
+    InitializeReply(Capabilities),
     LaunchReply,
     StepReply,
     BreakReply,

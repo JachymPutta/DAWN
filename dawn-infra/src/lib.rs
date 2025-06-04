@@ -11,8 +11,6 @@
 
 //!general coding infrastructure for implementing a dap debugger
 
-///! backend
-pub mod backend;
 ///! communication codec
 pub mod codec;
 ///! dap debugger

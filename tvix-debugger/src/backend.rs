@@ -70,8 +70,8 @@ impl TvixBackend {
     pub fn handle_command(&mut self, command: Command) -> CommandReply {
         match command {
             Command::Initialize => {
-                let _ = self.handle_initialize();
-                CommandReply::InitializeReply
+                let capabilities = self.handle_initialize();
+                CommandReply::InitializeReply(capabilities)
             }
             Command::Launch => {
                 self.handle_launch();
