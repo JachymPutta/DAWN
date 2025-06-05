@@ -1,92 +1,38 @@
-use std::time::Duration;
+mod common;
 
-use dawn_infra::codec::DebugAdapterCodec;
-use dawn_plugin::run_debug_adapter;
+use common::request::{launch_request_with_expression, launch_request_with_file};
+use common::session::TestSession;
 
-use debug_types::{MessageKind, ProtocolMessage};
-use futures::{SinkExt, StreamExt};
-use serde_json::json;
-use tokio::time::timeout;
-use tokio_util::codec::{FramedRead, FramedWrite};
+use debug_types::MessageKind;
 
-#[tokio::test]
-async fn test_launch_request_expression() {
-    let (client_input, adapter_input) = tokio::io::duplex(1024);
-    let (adapter_output, client_output) = tokio::io::duplex(1024);
+#[test]
+fn test_launch_request_expression() {
+    let mut session = TestSession::new();
 
-    // spawn the debugger loop
-    let _task = tokio::spawn(run_debug_adapter(adapter_input, adapter_output));
+    let launch_request = launch_request_with_expression("3 + 1");
+    session.send(launch_request);
 
-    let mut writer = FramedWrite::new(
-        client_input,
-        DebugAdapterCodec::<ProtocolMessage>::default(),
-    );
-    let mut reader = FramedRead::new(
-        client_output,
-        DebugAdapterCodec::<ProtocolMessage>::default(),
-    );
-
-    let lauch = json!({
-        "seq": 1,
-        "type": "request",
-        "command": "launch",
-        "arguments": {
-            "no_debug": true,
-            "manifest": Some(".".to_string()),
-            "expression": Some("3 + 1".to_string()),
-        }
-    });
-    let init_msg: ProtocolMessage = serde_json::from_value(lauch).unwrap();
-    writer.send(init_msg).await.unwrap();
-
-    let launch_resp = timeout(Duration::from_secs(1), reader.next())
-        .await
-        .unwrap()
-        .unwrap()
-        .unwrap();
-    match launch_resp.message {
+    let response = session.recv();
+    match response.message {
         MessageKind::Response(r) if r.success => {}
-        other => panic!("bad init response: {:?}", other),
+        other => panic!("bad launch response: {:?}", other),
     }
+
+    session.shutdown();
 }
 
-#[tokio::test]
-async fn test_launch_request_file() {
-    let (client_input, adapter_input) = tokio::io::duplex(1024);
-    let (adapter_output, client_output) = tokio::io::duplex(1024);
+#[test]
+fn test_launch_request_file() {
+    let mut session = TestSession::new();
 
-    // spawn the debugger loop
-    let _task = tokio::spawn(run_debug_adapter(adapter_input, adapter_output));
+    let launch_request = launch_request_with_file("test/simple.nix", Some(".".into()));
+    session.send(launch_request);
 
-    let mut writer = FramedWrite::new(
-        client_input,
-        DebugAdapterCodec::<ProtocolMessage>::default(),
-    );
-    let mut reader = FramedRead::new(
-        client_output,
-        DebugAdapterCodec::<ProtocolMessage>::default(),
-    );
-
-    let lauch = json!({
-        "seq": 1,
-        "type": "request",
-        "command": "launch",
-        "arguments": {
-            "no_debug": true,
-            "program": Some("test/simple.nix".to_string()),
-            "manifest": Some(".".to_string()),
-        }
-    });
-    let init_msg: ProtocolMessage = serde_json::from_value(lauch).unwrap();
-    writer.send(init_msg).await.unwrap();
-
-    let launch_resp = timeout(Duration::from_secs(1), reader.next())
-        .await
-        .unwrap()
-        .unwrap()
-        .unwrap();
-    match launch_resp.message {
+    let response = session.recv();
+    match response.message {
         MessageKind::Response(r) if r.success => {}
-        other => panic!("bad init response: {:?}", other),
+        other => panic!("bad launch response: {:?}", other),
     }
+
+    session.shutdown();
 }

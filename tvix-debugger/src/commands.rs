@@ -2,7 +2,6 @@ use debug_types::types::Capabilities;
 use smol_str::SmolStr;
 use std::str::FromStr;
 use strum::Display;
-use strum_macros::EnumString;
 
 // TODO: support breakpoints on variable names
 #[derive(Debug, Clone, PartialEq, Eq)]

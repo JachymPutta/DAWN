@@ -1,3 +1,5 @@
+use std::sync::mpsc::{Receiver, Sender};
+
 use debug_types::{
     events::EventBody,
     requests::{BreakpointLocationsArguments, InitializeRequestArguments, LaunchRequestArguments},
@@ -13,7 +15,10 @@ use debug_types::requests::RequestCommand::{
 use nll::nll_todo::nll_todo;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::error;
-use tvix_debugger::{backend::TvixBackend, commands::CommandReply};
+use tvix_debugger::{
+    backend::TvixBackend,
+    commands::{Command, CommandReply},
+};
 
 impl<R, W> DebugAdapter for NixDebugAdapter<R, W>
 where
@@ -51,21 +56,15 @@ where
 {
     /// handler for receipt of initialize event from client
     async fn handle_initialize(&mut self, seq: i64, args: InitializeRequestArguments) {
-        let debugger_args = tvix_debugger::config::Args {
-            program: "tvix-debugger/tests/simple_fn_call.nix".into(),
-        };
-        let debugger = TvixBackend::new(debugger_args);
-        self.debugger = Some(debugger);
-        let capabilities = if let CommandReply::InitializeReply(capabilities) = self
-            .debugger
-            .as_mut()
-            .unwrap()
-            .handle_command(tvix_debugger::commands::Command::Initialize)
-        {
-            capabilities
-        } else {
-            panic!("Error: initializing backend")
-        };
+        self.sender
+            .send(tvix_debugger::commands::Command::Initialize)
+            .unwrap();
+        let capabilities =
+            if let CommandReply::InitializeReply(capabilities) = self.receiver.recv().unwrap() {
+                capabilities
+            } else {
+                panic!("Error: initializing backend")
+            };
 
         let response = InitializeResponse { capabilities };
 
@@ -212,8 +211,10 @@ where
     pub client: Client<R, W>,
     /// the state
     pub state: NixDebugState,
-    /// the debugger
-    pub debugger: Option<TvixBackend>,
+    /// channel to send commands to the debugger
+    pub sender: Sender<Command>,
+    /// channel for replies from the debugger
+    pub receiver: Receiver<CommandReply>,
 }
 
 /// the debug state
