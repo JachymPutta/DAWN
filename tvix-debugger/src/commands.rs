@@ -92,6 +92,7 @@ pub enum CommandReply {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ObserverCommand {
+    Exit,
     Wait,
     Done,
     Launch,

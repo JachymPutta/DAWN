@@ -13,7 +13,7 @@ use crate::observer::DebugObserver;
 pub struct TvixBackend {
     code_path: PathBuf,
     code: SourceCode,
-    observer_handle: JoinHandle<()>,
+    observer_handle: Option<JoinHandle<()>>,
     receiver: Receiver<ObserverReply>,
     sender: Sender<ObserverCommand>,
 }
@@ -25,7 +25,7 @@ impl TvixBackend {
         let code = SourceCode::default();
         let code_path = args.program.clone();
 
-        let observer_handle = std::thread::spawn(move || {
+        let observer_handle = Some(std::thread::spawn(move || {
             let source_code = SourceCode::default();
             let code_path = args.program.clone();
             let file_name = code_path.file_name().unwrap().to_os_string();
@@ -51,9 +51,16 @@ impl TvixBackend {
             observer.set_cmd(ObserverCommand::Done);
 
             loop {
-                observer.handle_command();
+                match observer.handle_command() {
+                    Ok(()) => continue,
+                    Err(e) => {
+                        println!("observer: ended with - {}", e.to_string());
+                        break;
+                    }
+                }
             }
-        });
+            println!("observer is done")
+        }));
 
         TvixBackend {
             code_path,
@@ -92,6 +99,13 @@ impl TvixBackend {
                 self.handle_continue();
                 CommandReply::LaunchReply
             }
+            Command::Exit => {
+                println!("backend: got an exit, exting");
+                self.handle_exit();
+                (*self).exit();
+                println!("backend: exited");
+                CommandReply::ExitReply
+            }
             _ => {
                 unreachable!("Unknown command in backend: {}", command)
             }
@@ -104,6 +118,11 @@ impl TvixBackend {
     //         ..default_capabilities()
     //     }
     // }
+
+    fn handle_exit(&mut self) {
+        let _ = self.sender.send(ObserverCommand::Exit);
+        let _ = self.receiver.recv();
+    }
 
     fn handle_launch(&mut self) {
         let _ = self.sender.send(ObserverCommand::Launch);
@@ -129,6 +148,11 @@ impl TvixBackend {
 
     pub fn exit(&mut self) {
         // TODO: send exit to the evaluator, join the handle, return
+        println!("got exit, joining observer");
+        if let Some(handle) = self.observer_handle.take() {
+            let _ = handle.join();
+        }
+        println!("observer joined");
     }
 }
 

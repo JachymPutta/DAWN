@@ -32,7 +32,11 @@ where
     let (adapter_sender, debugger_reciever) = mpsc::channel::<Command>();
     let (debugger_sender, adapter_reciever) = mpsc::channel::<CommandReply>();
     let debugger_handle = run_debugger(debugger_reciever, debugger_sender);
-    let _ = tokio::runtime::Builder::new_multi_thread()
+    #[expect(
+        clippy::missing_panics_doc,
+        reason = "tokio runtime won't fail to build"
+    )]
+    tokio::runtime::Builder::new_multi_thread()
         .worker_threads(10)
         .enable_all()
         .build()
@@ -40,7 +44,9 @@ where
         .block_on(async {
             run_debug_adapter(reader, writer, adapter_sender, adapter_reciever).await;
         });
+    println!("waiting on debugger");
     let _ = debugger_handle.join();
+    println!("toplevel exited");
 }
 
 /// Runs the debug adapter loop using the provided async reader/writer.
@@ -69,7 +75,7 @@ async fn run_debug_adapter<R, W>(
     while adapter.client.get_state() < State::ShutDown {
         use debug_types::MessageKind::{Event, Request, Response};
         let msg = adapter.client.next_msg().await;
-        println!("got a message {:?}", msg);
+        println!("got a message {msg:?}");
         match msg.message {
             Request(request) => adapter.handle_request(msg.seq, request).await,
             Response(response) => {
@@ -78,6 +84,7 @@ async fn run_debug_adapter<R, W>(
             Event(e) => error!("Received event {e:?}. Shouldn't be possible!"),
         }
     }
+    println!("Adapter exited");
 }
 
 /// Initialize the tvix debugger
@@ -89,14 +96,17 @@ fn run_debugger(
         // State: not launched yet
         let mut debugger: Option<TvixBackend> = None;
 
-        loop {
-            let cmd = match receiver.recv() {
-                Ok(cmd) => cmd,
-                Err(_) => break, // Channel closed
-            };
-
+        while let Ok(cmd) = receiver.recv() {
             match cmd {
-                Command::Exit => break,
+                Command::Exit => {
+                    if let Some(mut debugger_) = debugger {
+                        //TODO: check the exit command reply to see status
+                        let _ = debugger_.handle_command(cmd);
+                        // sender.send(reply).unwrap();
+                        return;
+                    }
+                    return;
+                }
                 Command::Launch(program_opt) => {
                     // Construct debugger from args
                     let program = program_opt.expect("No program specified").into();

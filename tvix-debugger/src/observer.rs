@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    error::Error,
     fmt::Display,
     sync::mpsc::{Receiver, Sender},
 };
@@ -23,18 +24,10 @@ struct ProgramState {
     stack: Vec<tvix_eval::Value>,
 }
 
+#[derive(Default)]
 struct BreakPoints {
     breakpoints: HashSet<usize>,
     source_id: HashMap<SourceSpan, usize>,
-}
-
-impl Default for BreakPoints {
-    fn default() -> Self {
-        BreakPoints {
-            breakpoints: HashSet::default(),
-            source_id: HashMap::default(),
-        }
-    }
 }
 
 impl Display for ProgramState {
@@ -80,13 +73,24 @@ impl DebugObserver {
 
     /// Handling the commands from the backend, can pause execution to wait for
     /// more user input
-    pub fn handle_command(&mut self) {
+    pub fn handle_command(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         // Only stop when we hit a breakpoint || step through the program
+        if self.cur_cmd == ObserverCommand::Exit || self.cur_cmd == ObserverCommand::Done {
+            let _ = self._sender.send(ObserverReply::Done);
+            return Err("observer: Received done".into());
+        }
+
         let command = self.receiver.recv().unwrap();
+
+        if command == ObserverCommand::Exit {
+            println!("observer: Received done");
+            self.cur_cmd = ObserverCommand::Exit;
+            return Err("observer: Received done".into());
+        }
 
         if self.cur_cmd == ObserverCommand::Wait && command != ObserverCommand::Launch {
             println!("Program is not running! Launch first");
-            return;
+            return Ok(());
         }
 
         match &command {
@@ -97,7 +101,10 @@ impl DebugObserver {
             ObserverCommand::Launch => self.handle_launch(),
             ObserverCommand::Wait => (),
             ObserverCommand::Done => (),
+            _ => panic!("observer: unexpected request: {:?}", command),
         };
+
+        Ok(())
     }
 
     // fn print_current_source(&self) {

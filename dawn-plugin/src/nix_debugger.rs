@@ -148,6 +148,7 @@ where
     ) {
         // blindly disconnect always
         self.client.set_state(State::ShutDown);
+
         self.sender
             .send(tvix_debugger::commands::Command::Exit)
             .unwrap();

@@ -1,8 +1,6 @@
 mod common;
 
-use std::env;
-
-use common::request::launch_request_with_file;
+use common::request::{initialize_request, launch_request_with_file};
 use common::session::TestSession;
 
 use debug_types::MessageKind;
@@ -26,6 +24,10 @@ use debug_types::MessageKind;
 #[test]
 fn test_launch_request_file() {
     let mut session = TestSession::new();
+
+    session.send(initialize_request());
+    let _capabilities = session.recv();
+    let _initialized = session.recv();
 
     let launch_request =
         launch_request_with_file("../tvix-debugger/tests/simple.nix", Some(".".into()));
