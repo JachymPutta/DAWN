@@ -38,9 +38,6 @@ where
         .build()
         .unwrap()
         .block_on(async {
-            let log_writer = std::fs::File::create("./LOGLOG").unwrap();
-            tracing_subscriber::fmt().with_writer(log_writer).init();
-
             run_debug_adapter(reader, writer, adapter_sender, adapter_reciever).await;
         });
     let _ = debugger_handle.join();
@@ -84,20 +81,40 @@ async fn run_debug_adapter<R, W>(
 }
 
 /// Initialize the tvix debugger
-// TODO: add the program as an argument here, run only after we get the program
 fn run_debugger(
     receiver: Receiver<Command>,
     sender: Sender<CommandReply>,
 ) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
-        let debugger_args = tvix_debugger::config::Args {
-            program: "tvix-debugger/tests/simple_fn_call.nix".into(),
-        };
-        let mut debugger = TvixBackend::new(debugger_args);
+        // State: not launched yet
+        let mut debugger: Option<TvixBackend> = None;
+
         loop {
-            let cmd = receiver.recv().unwrap();
-            let reply = debugger.handle_command(cmd);
-            sender.send(reply).unwrap();
+            let cmd = match receiver.recv() {
+                Ok(cmd) => cmd,
+                Err(_) => break, // Channel closed
+            };
+
+            match cmd {
+                Command::Exit => break,
+                Command::Launch(program_opt) => {
+                    // Construct debugger from args
+                    let program = program_opt.expect("No program specified").into();
+                    let debugger_args = tvix_debugger::config::Args { program };
+                    debugger = Some(TvixBackend::new(debugger_args));
+                    sender.send(CommandReply::LaunchReply).unwrap();
+                }
+
+                _ if debugger.is_none() => {
+                    // If not launched yet, ignore or send "not ready" reply
+                    sender.send(CommandReply::UnknownReply).unwrap(); // Or custom NotReadyReply
+                }
+
+                _ => {
+                    let reply = debugger.as_mut().unwrap().handle_command(cmd);
+                    sender.send(reply).unwrap();
+                }
+            }
         }
     })
 }

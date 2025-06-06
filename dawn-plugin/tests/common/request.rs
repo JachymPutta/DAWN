@@ -26,6 +26,7 @@ pub fn launch_request_with_expression(expr: &str) -> ProtocolMessage {
         "arguments": {
             "no_debug": true,
             "manifest": ".",
+            "name": "",
             "expression": expr,
         }
     });
@@ -40,9 +41,23 @@ pub fn launch_request_with_file(program: &str, manifest: Option<String>) -> Prot
         "command": "launch",
         "arguments": {
             "no_debug": true,
-            "program": program,
+            "name": program,
             "manifest": manifest.unwrap_or_else(|| ".".into()),
+            "expression": "",
         }
     });
     serde_json::from_value(val).expect("valid launch request (file)")
+}
+
+/// Builds a disconnect request.
+pub fn disconnect_request() -> ProtocolMessage {
+    let val = json!({
+        "seq": 1,
+        "type": "request",
+        "command": "disconnect",
+        "arguments": {
+            "restart": false
+        }
+    });
+    serde_json::from_value(val).expect("valid disconnect request")
 }

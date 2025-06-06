@@ -9,6 +9,8 @@ use tokio_util::codec::{FramedRead, FramedWrite};
 use dawn_infra::codec::DebugAdapterCodec;
 use debug_types::ProtocolMessage;
 
+use super::request::disconnect_request;
+
 /// Holds the full state of a test session.
 pub struct TestSession {
     runtime: Runtime,
@@ -59,8 +61,9 @@ impl TestSession {
     }
 
     /// Gracefully shutdown the adapter thread.
-    pub fn shutdown(self) {
+    pub fn shutdown(mut self) {
         // TODO: send terminate, then disconnect
-        // let _ = self.adapter_handle.join();
+        self.send(disconnect_request());
+        let _ = self.adapter_handle.join();
     }
 }

@@ -4,7 +4,7 @@ use debug_types::{
     events::EventBody,
     requests::{BreakpointLocationsArguments, InitializeRequestArguments, LaunchRequestArguments},
     responses::{BreakpointLocationsResponse, InitializeResponse, Response, ResponseBody},
-    types::BreakpointLocation,
+    types::{BreakpointLocation, Capabilities},
 };
 use either::Either;
 
@@ -15,10 +15,7 @@ use debug_types::requests::RequestCommand::{
 use nll::nll_todo::nll_todo;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::error;
-use tvix_debugger::{
-    backend::TvixBackend,
-    commands::{Command, CommandReply},
-};
+use tvix_debugger::commands::{Command, CommandReply};
 
 impl<R, W> DebugAdapter for NixDebugAdapter<R, W>
 where
@@ -56,16 +53,7 @@ where
 {
     /// handler for receipt of initialize event from client
     async fn handle_initialize(&mut self, seq: i64, args: InitializeRequestArguments) {
-        self.sender
-            .send(tvix_debugger::commands::Command::Initialize)
-            .unwrap();
-        let capabilities =
-            if let CommandReply::InitializeReply(capabilities) = self.receiver.recv().unwrap() {
-                capabilities
-            } else {
-                panic!("Error: initializing backend")
-            };
-
+        let capabilities = default_capabilities();
         let response = InitializeResponse { capabilities };
 
         let body = Some(ResponseBody::Initialize(response));
@@ -133,7 +121,13 @@ where
         };
 
         // error!("launch args: {args:?}");
-        // self.debugger.launch(args);
+        self.sender
+            .send(tvix_debugger::commands::Command::Launch(args.name))
+            .unwrap();
+
+        let reply = self.receiver.recv().unwrap();
+        assert!(matches!(reply, CommandReply::LaunchReply));
+
         // TODO some argument checking I think
         self.client
             .send(Either::Right(Response {
@@ -154,6 +148,11 @@ where
     ) {
         // blindly disconnect always
         self.client.set_state(State::ShutDown);
+        self.sender
+            .send(tvix_debugger::commands::Command::Exit)
+            .unwrap();
+        //TODO: check the exit reply to see if it exited cleanly
+
         let body = Some(ResponseBody::Disconnect);
         self.client
             .send(Either::Right(Response {
@@ -221,4 +220,51 @@ where
 #[derive(Default, Debug, Clone)]
 pub struct NixDebugState {
     // root_file: std::io
+}
+
+// FIXME why does capabilities not implement default?
+/// "sane" capabilities: disable everything!
+#[must_use]
+pub fn default_capabilities() -> Capabilities {
+    Capabilities {
+        supports_configuration_done_request: None,
+        supports_function_breakpoints: None,
+        supports_step_in_targets_request: None,
+        support_terminate_debuggee: None,
+        supports_loaded_sources_request: None,
+        supports_data_breakpoints: None,
+        supports_breakpoint_locations_request: None,
+        supports_conditional_breakpoints: None,
+        supports_hit_conditional_breakpoints: None,
+        supports_evaluate_for_hovers: None,
+        exception_breakpoint_filters: None,
+        supports_step_back: None,
+        supports_set_variable: None,
+        supports_restart_frame: None,
+        supports_goto_targets_request: None,
+        supports_completions_request: None,
+        completion_trigger_characters: None,
+        supports_modules_request: None,
+        additional_module_columns: None,
+        supported_checksum_algorithms: None,
+        supports_restart_request: None,
+        supports_exception_options: None,
+        supports_value_formatting_options: None,
+        supports_exception_info_request: None,
+        support_suspend_debuggee: None,
+        supports_delayed_stack_trace_loading: None,
+        supports_log_points: None,
+        supports_terminate_threads_request: None,
+        supports_set_expression: None,
+        supports_terminate_request: None,
+        supports_read_memory_request: None,
+        supports_write_memory_request: None,
+        supports_disassemble_request: None,
+        supports_cancel_request: None,
+        supports_clipboard_context: None,
+        supports_stepping_granularity: None,
+        supports_instruction_breakpoints: None,
+        supports_exception_filter_options: None,
+        supports_single_thread_execution_requests: None,
+    }
 }

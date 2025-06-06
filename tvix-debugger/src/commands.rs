@@ -31,9 +31,9 @@ impl FromStr for Breakpoint {
 pub enum Command {
     Exit,
     Unknown,
-    Initialize,
+    // Initialize, //FIXME: Initialize seems to be adapter only, if not, it's here
     Continue,
-    Launch,
+    Launch(Option<String>),
     Step,
     Break(Breakpoint),
     Print(SmolStr),
@@ -53,8 +53,8 @@ impl FromStr for Command {
         match cmd.as_str() {
             "exit" | "e" => Ok(Command::Exit),
             "continue" | "c" => Ok(Command::Continue),
-            "initialize" | "init" | "i" => Ok(Command::Initialize),
-            "launch" | "l" => Ok(Command::Launch),
+            // "initialize" | "init" | "i" => Ok(Command::Initialize),
+            "launch" | "l" => Ok(Command::Launch(None)),
             "step" | "s" => Ok(Command::Step),
             "break" | "b" => {
                 if let Some(target) = arg {
