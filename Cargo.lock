@@ -1801,6 +1801,8 @@ dependencies = [
  "debug_types",
  "either",
  "rustyline",
+ "serde",
+ "serde_json",
  "smol_str",
  "strum",
  "strum_macros",

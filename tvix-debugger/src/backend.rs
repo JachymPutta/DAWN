@@ -2,12 +2,12 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::JoinHandle;
 
-use smol_str::SmolStr;
 use tvix_eval::{EvalMode, Evaluation, SourceCode};
 
 use crate::commands::{Breakpoint, Command, CommandReply, ObserverCommand, ObserverReply};
 use crate::config::Args;
 use crate::observer::DebugObserver;
+use crate::serde_smolstr::SerSmolStr;
 
 /// tvix backend struct
 pub struct TvixBackend {
@@ -142,7 +142,7 @@ impl TvixBackend {
         let _ = self.sender.send(ObserverCommand::Break(breakpoint));
     }
 
-    fn handle_print(&mut self, var_name: SmolStr) {
+    fn handle_print(&mut self, var_name: SerSmolStr) {
         let _ = self.sender.send(ObserverCommand::Print(var_name));
     }
 

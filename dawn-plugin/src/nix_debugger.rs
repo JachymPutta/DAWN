@@ -1,5 +1,3 @@
-use std::sync::mpsc::{Receiver, Sender};
-
 use debug_types::{
     events::EventBody,
     requests::{BreakpointLocationsArguments, InitializeRequestArguments, LaunchRequestArguments},
@@ -123,9 +121,10 @@ where
         // error!("launch args: {args:?}");
         self.sender
             .send(tvix_debugger::commands::Command::Launch(args.name))
+            .await
             .unwrap();
 
-        let reply = self.receiver.recv().unwrap();
+        let reply = self.receiver.recv().await.unwrap();
         assert!(matches!(reply, CommandReply::LaunchReply));
 
         // TODO some argument checking I think
@@ -151,6 +150,7 @@ where
 
         self.sender
             .send(tvix_debugger::commands::Command::Exit)
+            .await
             .unwrap();
         //TODO: check the exit reply to see if it exited cleanly
 
@@ -212,9 +212,9 @@ where
     /// the state
     pub state: NixDebugState,
     /// channel to send commands to the debugger
-    pub sender: Sender<Command>,
+    pub sender: tokio::sync::mpsc::Sender<Command>,
     /// channel for replies from the debugger
-    pub receiver: Receiver<CommandReply>,
+    pub receiver: tokio::sync::mpsc::Receiver<CommandReply>,
 }
 
 /// the debug state

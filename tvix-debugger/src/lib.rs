@@ -10,6 +10,7 @@ pub mod commands;
 pub mod config;
 pub mod input;
 pub mod observer;
+mod serde_smolstr;
 
 pub fn run_debugger(args: Args) {
     let mut backend = TvixBackend::new(args);

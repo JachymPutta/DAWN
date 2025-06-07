@@ -15,7 +15,10 @@ use tvix_eval::{
     SourceCode, Value,
 };
 
-use crate::commands::{Breakpoint, ObserverCommand, ObserverReply};
+use crate::{
+    commands::{Breakpoint, ObserverCommand, ObserverReply},
+    serde_smolstr::SerSmolStr,
+};
 
 // TODO: this doesn't maintain anything, need to maintain the mappings
 // by myself --> hashmap<Name, Value>
@@ -166,7 +169,7 @@ impl DebugObserver {
         // println!("{}", self.cur_state);
     }
 
-    fn handle_print(&self, var_name: SmolStr) {
+    fn handle_print(&self, var_name: SerSmolStr) {
         // TODO if the option is some, find that variable name in the lambda
         // else print all the variable names
         if let Some(lambda) = &self.cur_state.lambda {

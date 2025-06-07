@@ -1,13 +1,15 @@
 use debug_types::types::Capabilities;
-use smol_str::SmolStr;
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use strum::Display;
 
+use crate::serde_smolstr::SerSmolStr;
+
 // TODO: support breakpoints on variable names
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Breakpoint {
     Line(usize),
-    FileLine { file: SmolStr, line: usize },
+    FileLine { file: SerSmolStr, line: usize },
 }
 
 impl FromStr for Breakpoint {
@@ -27,7 +29,7 @@ impl FromStr for Breakpoint {
     }
 }
 
-#[derive(Debug, Display)]
+#[derive(Debug, Display, Serialize, Deserialize)]
 pub enum Command {
     Exit,
     Unknown,
@@ -36,7 +38,7 @@ pub enum Command {
     Launch(Option<String>),
     Step,
     Break(Breakpoint),
-    Print(SmolStr),
+    Print(SerSmolStr),
 }
 
 impl FromStr for Command {
@@ -77,7 +79,7 @@ impl FromStr for Command {
         }
     }
 }
-#[derive(Debug, Display)]
+#[derive(Debug, Display, Serialize, Deserialize)]
 #[strum(serialize_all = "snake_case")]
 pub enum CommandReply {
     ExitReply,
@@ -99,7 +101,7 @@ pub enum ObserverCommand {
     Continue,
     Step,
     Break(Breakpoint),
-    Print(SmolStr),
+    Print(SerSmolStr),
 }
 
 #[derive(Debug)]
