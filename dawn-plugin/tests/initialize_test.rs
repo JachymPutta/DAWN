@@ -5,17 +5,17 @@ use common::session::TestSession;
 
 use debug_types::MessageKind;
 
-#[test]
-fn test_initialize_request_sync() {
-    let mut session = TestSession::new();
+#[tokio::test]
+async fn test_initialize_request_sync() {
+    let mut session = TestSession::new().await;
 
-    session.send(initialize_request());
-    let response = session.recv();
+    session.send(initialize_request()).await;
+    let response = session.recv().await;
 
     match response.message {
         MessageKind::Response(r) if r.success => { /* success */ }
         other => panic!("unexpected init response: {:?}", other),
     }
 
-    session.shutdown();
+    session.shutdown().await;
 }

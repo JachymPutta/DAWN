@@ -6,12 +6,16 @@ use debug_types::{
 };
 use either::Either;
 
-use dawn_infra::debugger::{Client, DebugAdapter, State};
+use dawn_infra::debugger::{Client, DebugAdapter, Server, State};
 use debug_types::requests::RequestCommand::{
     BreakpointLocations, ConfigurationDone, Disconnect, Initialize, Launch,
 };
 use nll::nll_todo::nll_todo;
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::process::Command as TokioCommand;
+use tokio::{
+    io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader},
+    process::ChildStdin,
+};
 use tracing::error;
 use tvix_debugger::commands::{Command, CommandReply};
 
@@ -66,6 +70,9 @@ where
             }))
             .await;
 
+        //TODO: pass in the program and stuff
+        self.initialie_debugger();
+
         // println!("HELLO WORLD 1!!");
         self.client.set_state(State::Initialized);
         // println!("HELLO WORLD!!");
@@ -119,12 +126,15 @@ where
         };
 
         // error!("launch args: {args:?}");
-        self.sender
+        self.server
+            .as_mut()
+            .unwrap()
+            .sender
             .send(tvix_debugger::commands::Command::Launch(args.name))
             .await
             .unwrap();
 
-        let reply = self.receiver.recv().await.unwrap();
+        let reply = self.server.as_mut().unwrap().receiver.recv().await.unwrap();
         assert!(matches!(reply, CommandReply::LaunchReply));
 
         // TODO some argument checking I think
@@ -148,11 +158,12 @@ where
         // blindly disconnect always
         self.client.set_state(State::ShutDown);
 
-        self.sender
-            .send(tvix_debugger::commands::Command::Exit)
-            .await
-            .unwrap();
-        //TODO: check the exit reply to see if it exited cleanly
+        if let Some(server) = self.server.as_mut() {
+            match server.debugger.kill().await {
+                Ok(_) => tracing::info!("Successfully killed debugger process."),
+                Err(e) => tracing::error!("Failed to kill debugger process: {e}"),
+            }
+        }
 
         let body = Some(ResponseBody::Disconnect);
         self.client
@@ -199,6 +210,75 @@ where
         // }))
         // .await;
     }
+
+    fn initialie_debugger(&mut self) {
+        use std::process::Stdio;
+
+        //TODO -- where do we assume the binary is
+        let mut child = TokioCommand::new("cargo")
+            .args([
+                "run",
+                "--quiet",
+                "--release",
+                "--manifest-path",
+                "../tvix-debugger/Cargo.toml",
+                "--",
+                "--program",
+                "../tvix-debugger/tests/simple.nix",
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("Failed to launch debugger process");
+
+        let stdin: ChildStdin = child.stdin.take().expect("Missing debugger stdin");
+        let stdout = child.stdout.take().expect("Missing debugger stdout");
+
+        let mut stdin = stdin;
+        let stdout_reader = BufReader::new(stdout);
+
+        let (cmd_sender, mut cmd_receiver) = tokio::sync::mpsc::channel::<Command>(32);
+        let (reply_sender, reply_receiver) = tokio::sync::mpsc::channel::<CommandReply>(32);
+
+        // Writer task: send Command -> stdin
+        tokio::spawn(async move {
+            while let Some(cmd) = cmd_receiver.recv().await {
+                let msg = match serde_json::to_string(&cmd) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        eprintln!("Failed to serialize command: {e}");
+                        continue;
+                    }
+                };
+                if let Err(e) = stdin.write_all(msg.as_bytes()).await {
+                    eprintln!("Failed to write to debugger stdin: {e}");
+                    break;
+                }
+                let _ = stdin.write_all(b"\n").await;
+            }
+        });
+
+        // Reader task: read CommandReply <- stdout
+        tokio::spawn(async move {
+            let mut lines = stdout_reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                match serde_json::from_str::<CommandReply>(&line) {
+                    Ok(reply) => {
+                        let _ = reply_sender.send(reply);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to deserialize reply: {e} - line: {line}");
+                    }
+                }
+            }
+        });
+
+        self.server = Some(Server {
+            sender: cmd_sender,
+            receiver: reply_receiver,
+            debugger: child,
+        });
+    }
 }
 
 /// overarching struct holding dap state and comms
@@ -211,10 +291,8 @@ where
     pub client: Client<R, W>,
     /// the state
     pub state: NixDebugState,
-    /// channel to send commands to the debugger
-    pub sender: tokio::sync::mpsc::Sender<Command>,
-    /// channel for replies from the debugger
-    pub receiver: tokio::sync::mpsc::Receiver<CommandReply>,
+    /// the server
+    pub server: Option<Server>,
 }
 
 /// the debug state

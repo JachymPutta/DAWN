@@ -1,10 +1,11 @@
-use dawn_plugin::run_toplevel;
+use dawn_plugin::run_debug_adapter;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
     let log_writer = std::fs::File::create("./LOGLOG").unwrap();
     tracing_subscriber::fmt().with_writer(log_writer).init();
 
-    run_toplevel(stdin, stdout);
+    run_debug_adapter(stdin, stdout).await
 }

@@ -1,5 +1,9 @@
 use atomic_enum::atomic_enum;
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader},
+    process::ChildStdin,
+    sync::mpsc,
+};
 
 use debug_types::{
     events::{Event, EventBody},
@@ -10,6 +14,7 @@ use debug_types::{
 use futures::{SinkExt, StreamExt};
 use std::sync::atomic::Ordering::Relaxed;
 use tokio_util::codec::{FramedRead, FramedWrite};
+use tvix_debugger::commands::{Command, CommandReply};
 
 use either::Either;
 use tracing::error;
@@ -33,6 +38,16 @@ pub enum State {
     ShutDown = 3,
     /// Server received an `exit` notification.
     Exited = 4,
+}
+
+/// Struct used to communicated with the debugger server process
+pub struct Server {
+    /// channel to send commands to the debugger
+    pub sender: mpsc::Sender<Command>,
+    /// channel for replies from the debugger
+    pub receiver: mpsc::Receiver<CommandReply>,
+    /// debugger handle
+    pub debugger: tokio::process::Child,
 }
 
 /// Struct used to abstract away communication with client
