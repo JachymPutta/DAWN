@@ -10,6 +10,8 @@ use crate::observer::DebugObserver;
 use crate::serde_smolstr::SerSmolStr;
 
 /// tvix backend struct
+// FIXME remove this allow
+#[allow(dead_code)]
 pub struct TvixBackend {
     code_path: PathBuf,
     code: SourceCode,

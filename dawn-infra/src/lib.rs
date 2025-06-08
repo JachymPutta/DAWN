@@ -13,5 +13,7 @@
 
 ///! communication codec
 pub mod codec;
+///! adapted dap requests
+pub mod dap_requests;
 ///! dap debugger
 pub mod debugger;

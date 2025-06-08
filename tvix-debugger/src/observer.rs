@@ -1,17 +1,15 @@
 use std::{
     collections::{HashMap, HashSet},
-    error::Error,
     fmt::Display,
     sync::mpsc::{Receiver, Sender},
 };
 
 use codemap::Span;
-use smol_str::SmolStr;
 use tvix_eval::{
     chunk::SourceSpan,
     observer::RuntimeObserver,
     opcode::{CodeIdx, Op},
-    value::{self, Lambda},
+    value::Lambda,
     SourceCode, Value,
 };
 
@@ -30,7 +28,7 @@ struct ProgramState {
 #[derive(Default)]
 struct BreakPoints {
     breakpoints: HashSet<usize>,
-    source_id: HashMap<SourceSpan, usize>,
+    _source_id: HashMap<SourceSpan, usize>,
 }
 
 impl Display for ProgramState {
@@ -286,7 +284,7 @@ impl RuntimeObserver for DebugObserver {
             println!("Lambda: {}, Cur_op: {:?}", name, op);
         }
         if pause {
-            self.handle_command();
+            let _ = self.handle_command();
         }
     }
 }

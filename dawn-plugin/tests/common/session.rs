@@ -4,15 +4,17 @@ use futures::{SinkExt, StreamExt};
 use tokio::io::{duplex, DuplexStream};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-use dawn_infra::codec::DebugAdapterCodec;
-use debug_types::ProtocolMessage;
+use dawn_infra::{
+    codec::DebugAdapterCodec,
+    dap_requests::{ExtendedMessageKind, ExtendedProtocolMessage},
+};
 
 use super::request::disconnect_request;
 
 /// Holds the full state of a test session.
 pub struct TestSession {
-    writer: FramedWrite<DuplexStream, DebugAdapterCodec<ProtocolMessage>>,
-    reader: FramedRead<DuplexStream, DebugAdapterCodec<ProtocolMessage>>,
+    writer: FramedWrite<DuplexStream, DebugAdapterCodec<ExtendedProtocolMessage>>,
+    reader: FramedRead<DuplexStream, DebugAdapterCodec<ExtendedProtocolMessage>>,
 }
 
 impl TestSession {
@@ -32,13 +34,13 @@ impl TestSession {
         Self { writer, reader }
     }
 
-    /// Sends a `ProtocolMessage` to the adapter.
-    pub async fn send(&mut self, msg: ProtocolMessage) {
+    /// Sends a `ExtendedProtocolMessage` to the adapter.
+    pub async fn send(&mut self, msg: ExtendedProtocolMessage) {
         self.writer.send(msg).await.expect("Failed to send message")
     }
 
     /// Reads a message from the adapter with a timeout.
-    pub async fn recv(&mut self) -> ProtocolMessage {
+    pub async fn recv(&mut self) -> ExtendedProtocolMessage {
         tokio::time::timeout(Duration::from_secs(3), self.reader.next())
             .await
             .expect("read timeout")
@@ -49,6 +51,14 @@ impl TestSession {
     /// Gracefully shutdown the adapter thread.
     pub async fn shutdown(mut self) {
         // TODO: send terminate with a timeout, then disconnect
+        // currently just forces disconnect immediately
+
         self.send(disconnect_request()).await;
+
+        let response = self.recv().await;
+        match response.message {
+            ExtendedMessageKind::Response(r) if r.success => {}
+            other => panic!("bad disconnect response: {:?}", other),
+        }
     }
 }

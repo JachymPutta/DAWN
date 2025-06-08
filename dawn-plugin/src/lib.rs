@@ -10,8 +10,8 @@
 //! nix debugger implementation
 
 use dawn_infra::codec::DebugAdapterCodec;
+use dawn_infra::dap_requests::ExtendedProtocolMessage;
 use dawn_infra::debugger::{Client, DebugAdapter, State};
-use debug_types::ProtocolMessage;
 use nix_debugger::{NixDebugAdapter, NixDebugState};
 use tokio_util::codec::{FramedRead, FramedWrite};
 use tracing::error;
@@ -25,8 +25,14 @@ where
     R: tokio::io::AsyncRead + Unpin + Send + 'static,
     W: tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
-    let reader = FramedRead::new(reader, DebugAdapterCodec::<ProtocolMessage>::default());
-    let writer = FramedWrite::new(writer, DebugAdapterCodec::<ProtocolMessage>::default());
+    let reader = FramedRead::new(
+        reader,
+        DebugAdapterCodec::<ExtendedProtocolMessage>::default(),
+    );
+    let writer = FramedWrite::new(
+        writer,
+        DebugAdapterCodec::<ExtendedProtocolMessage>::default(),
+    );
     println!("Framed reader and writer initialized");
 
     let client = Client::new(reader, writer);
@@ -38,7 +44,7 @@ where
     println!("Adapter initialized, entering message loop");
 
     while adapter.client.get_state() < State::ShutDown {
-        use debug_types::MessageKind::{Event, Request, Response};
+        use dawn_infra::dap_requests::ExtendedMessageKind::{Event, Request, Response};
         let msg = adapter.client.next_msg().await;
         println!("got a message {msg:?}");
         match msg.message {

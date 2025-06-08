@@ -3,7 +3,7 @@ mod common;
 use common::request::initialize_request;
 use common::session::TestSession;
 
-use debug_types::MessageKind;
+use dawn_infra::dap_requests::ExtendedMessageKind;
 
 #[tokio::test]
 async fn test_initialize_request_sync() {
@@ -13,7 +13,7 @@ async fn test_initialize_request_sync() {
     let response = session.recv().await;
 
     match response.message {
-        MessageKind::Response(r) if r.success => { /* success */ }
+        ExtendedMessageKind::Response(r) if r.success => { /* success */ }
         other => panic!("unexpected init response: {:?}", other),
     }
 

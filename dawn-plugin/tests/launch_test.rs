@@ -3,23 +3,7 @@ mod common;
 use common::request::{initialize_request, launch_request_with_file};
 use common::session::TestSession;
 
-use debug_types::MessageKind;
-
-// #[test]
-// fn test_launch_request_expression() {
-//     let mut session = TestSession::new();
-//
-//     let launch_request = launch_request_with_expression("3 + 1");
-//     session.send(launch_request);
-//
-//     let response = session.recv();
-//     match response.message {
-//         MessageKind::Response(r) if r.success => {}
-//         other => panic!("bad launch response: {:?}", other),
-//     }
-//
-//     session.shutdown();
-// }
+use dawn_infra::dap_requests::ExtendedMessageKind;
 
 #[tokio::test]
 async fn test_launch_request_file() {
@@ -27,15 +11,19 @@ async fn test_launch_request_file() {
 
     session.send(initialize_request()).await;
     let _capabilities = session.recv().await;
+    println!("Checkpoint: capabilities done");
     let _initialized = session.recv().await;
+    println!("Checkpoint: initialized done");
 
     let launch_request =
         launch_request_with_file("../tvix-debugger/tests/simple.nix", Some(".".into()));
     session.send(launch_request).await;
+    println!("Checkpoint: launched");
 
     let response = session.recv().await;
+    println!("Checkpoint: got reply from session");
     match response.message {
-        MessageKind::Response(r) if r.success => {}
+        ExtendedMessageKind::Response(r) if r.success => {}
         other => panic!("bad launch response: {:?}", other),
     }
 

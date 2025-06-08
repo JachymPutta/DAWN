@@ -1,15 +1,12 @@
 use atomic_enum::atomic_enum;
 use tokio::{
-    io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader},
-    process::ChildStdin,
+    io::{AsyncRead, AsyncWrite},
     sync::mpsc,
 };
 
 use debug_types::{
     events::{Event, EventBody},
-    requests::RequestCommand,
     responses::Response,
-    MessageKind, ProtocolMessage,
 };
 use futures::{SinkExt, StreamExt};
 use std::sync::atomic::Ordering::Relaxed;
@@ -19,7 +16,10 @@ use tvix_debugger::commands::{Command, CommandReply};
 use either::Either;
 use tracing::error;
 
-use crate::codec::DebugAdapterCodec;
+use crate::{
+    codec::DebugAdapterCodec,
+    dap_requests::{ExtendedMessageKind, ExtendedProtocolMessage, ExtendedRequestCommand},
+};
 
 /// A list of possible states the adapter can be in.
 /// NOTE: the atomic version of this (which we intend to use!)
@@ -62,9 +62,9 @@ where
     /// the sequence number we're on
     send_seq: i64,
     /// reader for stdin
-    pub reader: FramedRead<R, DebugAdapterCodec<ProtocolMessage>>,
+    pub reader: FramedRead<R, DebugAdapterCodec<ExtendedProtocolMessage>>,
     /// reader for stdout
-    pub writer: FramedWrite<W, DebugAdapterCodec<ProtocolMessage>>,
+    pub writer: FramedWrite<W, DebugAdapterCodec<ExtendedProtocolMessage>>,
 }
 
 impl<R, W> Client<R, W>
@@ -75,8 +75,8 @@ where
     /// create new client
     #[must_use]
     pub fn new(
-        reader: FramedRead<R, DebugAdapterCodec<ProtocolMessage>>,
-        writer: FramedWrite<W, DebugAdapterCodec<ProtocolMessage>>,
+        reader: FramedRead<R, DebugAdapterCodec<ExtendedProtocolMessage>>,
+        writer: FramedWrite<W, DebugAdapterCodec<ExtendedProtocolMessage>>,
     ) -> Self {
         Self {
             state: State::Uninitialized.into(),
@@ -127,13 +127,13 @@ where
     /// send event to client (only possible way)
     pub async fn send(&mut self, body: Either<EventBody, Response>) {
         let message = match body {
-            Either::Left(event_body) => MessageKind::Event(Event {
+            Either::Left(event_body) => ExtendedMessageKind::Event(Event {
                 body: Some(event_body),
             }),
-            Either::Right(response_body) => MessageKind::Response(response_body),
+            Either::Right(response_body) => ExtendedMessageKind::Response(response_body),
         };
 
-        let message = ProtocolMessage {
+        let message = ExtendedProtocolMessage {
             seq: self.send_seq,
             message,
         };
@@ -147,7 +147,7 @@ where
     }
 
     /// request next message of substance from client
-    pub async fn next_msg(&mut self) -> ProtocolMessage {
+    pub async fn next_msg(&mut self) -> ExtendedProtocolMessage {
         loop {
             if let Some(msg) = self.reader.next().await {
                 match msg {
@@ -169,6 +169,6 @@ pub trait DebugAdapter {
     fn handle_request(
         &mut self,
         seq: i64,
-        command: RequestCommand,
+        command: ExtendedRequestCommand,
     ) -> impl std::future::Future<Output = ()>;
 }

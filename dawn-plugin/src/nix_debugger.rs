@@ -1,14 +1,15 @@
 use debug_types::{
     events::EventBody,
-    requests::{BreakpointLocationsArguments, InitializeRequestArguments, LaunchRequestArguments},
+    requests::{BreakpointLocationsArguments, InitializeRequestArguments},
     responses::{BreakpointLocationsResponse, InitializeResponse, Response, ResponseBody},
     types::{BreakpointLocation, Capabilities},
 };
 use either::Either;
 
-use dawn_infra::debugger::{Client, DebugAdapter, Server, State};
-use debug_types::requests::RequestCommand::{
-    BreakpointLocations, ConfigurationDone, Disconnect, Initialize, Launch,
+use dawn_infra::dap_requests::{ExtendedLaunchArguments, ExtendedRequestCommand::*};
+use dawn_infra::{
+    dap_requests::ExtendedRequestCommand,
+    debugger::{Client, DebugAdapter, Server, State},
 };
 use nll::nll_todo::nll_todo;
 use tokio::process::Command as TokioCommand;
@@ -24,7 +25,7 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    async fn handle_request(&mut self, seq: i64, command: debug_types::requests::RequestCommand) {
+    async fn handle_request(&mut self, seq: i64, command: ExtendedRequestCommand) {
         match command {
             Initialize(initialize_args) => self.handle_initialize(seq, initialize_args).await,
             ConfigurationDone => self.handle_configuration_done(seq).await,
@@ -54,7 +55,7 @@ where
     W: AsyncWrite + Unpin,
 {
     /// handler for receipt of initialize event from client
-    async fn handle_initialize(&mut self, seq: i64, args: InitializeRequestArguments) {
+    async fn handle_initialize(&mut self, seq: i64, _args: InitializeRequestArguments) {
         let capabilities = default_capabilities();
         let response = InitializeResponse { capabilities };
 
@@ -70,12 +71,7 @@ where
             }))
             .await;
 
-        //TODO: pass in the program and stuff
-        self.initialie_debugger();
-
-        // println!("HELLO WORLD 1!!");
         self.client.set_state(State::Initialized);
-        // println!("HELLO WORLD!!");
 
         // per spec, send initialized event
         // after responding with capabilities
@@ -98,8 +94,8 @@ where
     }
 
     /// handler for receipt of launch event from client
-    async fn handle_launch(&mut self, seq: i64, args: LaunchRequestArguments) {
-        let Some(root_file) = args.manifest.clone() else {
+    async fn handle_launch(&mut self, seq: i64, args: ExtendedLaunchArguments) {
+        let Some(_root_file) = args.inner.manifest.clone() else {
             self.client
                 .send(Either::Right(Response {
                     request_seq: seq,
@@ -113,7 +109,7 @@ where
         // TODO open the file.
 
         // TODO check that this attribute exists
-        let Some(flake_attribute) = args.expression.clone() else {
+        let Some(_flake_attribute) = args.inner.expression.clone() else {
             self.client
                 .send(Either::Right(Response {
                     request_seq: seq,
@@ -125,17 +121,13 @@ where
             return;
         };
 
-        // error!("launch args: {args:?}");
-        self.server
-            .as_mut()
-            .unwrap()
-            .sender
-            .send(tvix_debugger::commands::Command::Launch(args.name))
-            .await
-            .unwrap();
+        println!("program is !! {}", args.program);
+        self.initialize_debugger(&args.program);
+        println!("program initialized");
 
-        let reply = self.server.as_mut().unwrap().receiver.recv().await.unwrap();
-        assert!(matches!(reply, CommandReply::LaunchReply));
+        // let reply = self.server.as_mut().unwrap().receiver.recv().await.unwrap();
+        println!("got reply");
+        // assert!(matches!(reply, CommandReply::LaunchReply));
 
         // TODO some argument checking I think
         self.client
@@ -159,10 +151,9 @@ where
         self.client.set_state(State::ShutDown);
 
         if let Some(server) = self.server.as_mut() {
-            match server.debugger.kill().await {
-                Ok(_) => tracing::info!("Successfully killed debugger process."),
-                Err(e) => tracing::error!("Failed to kill debugger process: {e}"),
-            }
+            let _ = server.debugger.kill().await.inspect_err(|e| {
+                tracing::error!("Failed to kill debugger: {e}");
+            });
         }
 
         let body = Some(ResponseBody::Disconnect);
@@ -211,7 +202,7 @@ where
         // .await;
     }
 
-    fn initialie_debugger(&mut self) {
+    fn initialize_debugger(&mut self, program: &str) {
         use std::process::Stdio;
 
         //TODO -- where do we assume the binary is
@@ -224,7 +215,7 @@ where
                 "../tvix-debugger/Cargo.toml",
                 "--",
                 "--program",
-                "../tvix-debugger/tests/simple.nix",
+                program,
             ])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -246,12 +237,12 @@ where
                 let msg = match serde_json::to_string(&cmd) {
                     Ok(m) => m,
                     Err(e) => {
-                        eprintln!("Failed to serialize command: {e}");
+                        // eprintln!("Failed to serialize command: {e}");
                         continue;
                     }
                 };
                 if let Err(e) = stdin.write_all(msg.as_bytes()).await {
-                    eprintln!("Failed to write to debugger stdin: {e}");
+                    // eprintln!("Failed to write to debugger stdin: {e}");
                     break;
                 }
                 let _ = stdin.write_all(b"\n").await;
@@ -267,7 +258,7 @@ where
                         let _ = reply_sender.send(reply);
                     }
                     Err(e) => {
-                        eprintln!("Failed to deserialize reply: {e} - line: {line}");
+                        // eprintln!("Failed to deserialize reply: {e} - line: {line}");
                     }
                 }
             }
