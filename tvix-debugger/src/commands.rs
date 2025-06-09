@@ -33,9 +33,9 @@ impl FromStr for Breakpoint {
 pub enum Command {
     Exit,
     Unknown,
-    // Initialize, //FIXME: Initialize seems to be adapter only, if not, it's here
+    Initialize, //FIXME: Initialize seems to be adapter only, if not, it's here
     Continue,
-    Launch(Option<String>),
+    Launch(SerSmolStr),
     Step,
     Break(Breakpoint),
     Print(SerSmolStr),
@@ -55,8 +55,16 @@ impl FromStr for Command {
         match cmd.as_str() {
             "exit" | "e" => Ok(Command::Exit),
             "continue" | "c" => Ok(Command::Continue),
-            // "initialize" | "init" | "i" => Ok(Command::Initialize),
-            "launch" | "l" => Ok(Command::Launch(None)),
+            "initialize" | "init" | "i" => Ok(Command::Initialize),
+            "launch" | "l" => {
+                if let Some(target) = arg {
+                    // TODO: don't explode in case of invalid string
+                    Ok(Command::Launch(target.into()))
+                } else {
+                    println!("Err: break missing argument -- provide function name");
+                    Err(())
+                }
+            }
             "step" | "s" => Ok(Command::Step),
             "break" | "b" => {
                 if let Some(target) = arg {
@@ -64,7 +72,7 @@ impl FromStr for Command {
                     Ok(Command::Break(target.parse().unwrap()))
                 } else {
                     println!("Err: break missing argument -- provide function name");
-                    Err(()) // Or Command::Unknown if you prefer
+                    Err(())
                 }
             }
             "print" | "p" => {
@@ -72,7 +80,7 @@ impl FromStr for Command {
                     Ok(Command::Print(target.into()))
                 } else {
                     println!("Err: print missing argument -- provide variable name");
-                    Err(()) // Or Command::Unknown if you prefer
+                    Err(())
                 }
             }
             _ => Ok(Command::Unknown),
@@ -97,7 +105,7 @@ pub enum ObserverCommand {
     Exit,
     Wait,
     Done,
-    Launch,
+    Launch(SerSmolStr),
     Continue,
     Step,
     Break(Breakpoint),
@@ -108,4 +116,51 @@ pub enum ObserverCommand {
 pub enum ObserverReply {
     State,
     Done,
+}
+
+// FIXME why does capabilities not implement default?
+/// "sane" capabilities: disable everything!
+#[must_use]
+pub fn default_capabilities() -> Capabilities {
+    Capabilities {
+        supports_configuration_done_request: None,
+        supports_function_breakpoints: None,
+        supports_step_in_targets_request: None,
+        support_terminate_debuggee: None,
+        supports_loaded_sources_request: None,
+        supports_data_breakpoints: None,
+        supports_breakpoint_locations_request: None,
+        supports_conditional_breakpoints: None,
+        supports_hit_conditional_breakpoints: None,
+        supports_evaluate_for_hovers: None,
+        exception_breakpoint_filters: None,
+        supports_step_back: None,
+        supports_set_variable: None,
+        supports_restart_frame: None,
+        supports_goto_targets_request: None,
+        supports_completions_request: None,
+        completion_trigger_characters: None,
+        supports_modules_request: None,
+        additional_module_columns: None,
+        supported_checksum_algorithms: None,
+        supports_restart_request: None,
+        supports_exception_options: None,
+        supports_value_formatting_options: None,
+        supports_exception_info_request: None,
+        support_suspend_debuggee: None,
+        supports_delayed_stack_trace_loading: None,
+        supports_log_points: None,
+        supports_terminate_threads_request: None,
+        supports_set_expression: None,
+        supports_terminate_request: None,
+        supports_read_memory_request: None,
+        supports_write_memory_request: None,
+        supports_disassemble_request: None,
+        supports_cancel_request: None,
+        supports_clipboard_context: None,
+        supports_stepping_granularity: None,
+        supports_instruction_breakpoints: None,
+        supports_exception_filter_options: None,
+        supports_single_thread_execution_requests: None,
+    }
 }

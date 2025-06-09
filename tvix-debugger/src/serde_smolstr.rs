@@ -1,6 +1,6 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::SmolStr;
-use std::ops::Deref;
+use std::{ops::Deref, path::PathBuf};
 
 /// A serializable wrapper around `SmolStr`
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -60,5 +60,12 @@ impl PartialEq<SmolStr> for SerSmolStr {
 impl PartialEq<SerSmolStr> for SmolStr {
     fn eq(&self, other: &SerSmolStr) -> bool {
         self == &other.0
+    }
+}
+
+impl From<SerSmolStr> for PathBuf {
+    fn from(value: SerSmolStr) -> Self {
+        let str: String = value.0.to_string();
+        str.into()
     }
 }

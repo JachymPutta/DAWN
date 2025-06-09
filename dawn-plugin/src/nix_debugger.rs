@@ -1,8 +1,10 @@
+use std::sync::{atomic::AtomicBool, Arc};
+
 use debug_types::{
     events::EventBody,
     requests::{BreakpointLocationsArguments, InitializeRequestArguments},
     responses::{BreakpointLocationsResponse, InitializeResponse, Response, ResponseBody},
-    types::{BreakpointLocation, Capabilities},
+    types::BreakpointLocation,
 };
 use either::Either;
 
@@ -12,13 +14,13 @@ use dawn_infra::{
     debugger::{Client, DebugAdapter, Server, State},
 };
 use nll::nll_todo::nll_todo;
-use tokio::process::Command as TokioCommand;
-use tokio::{
-    io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader},
-    process::ChildStdin,
-};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::error;
-use tvix_debugger::commands::{Command, CommandReply};
+use tvix_debugger::{
+    backend::DebuggerState,
+    commands::{default_capabilities, Command, CommandReply},
+    config::Args,
+};
 
 impl<R, W> DebugAdapter for NixDebugAdapter<R, W>
 where
@@ -61,6 +63,8 @@ where
 
         let body = Some(ResponseBody::Initialize(response));
         self.client.set_state(State::Initializing);
+
+        self.initialize_debugger();
 
         self.client
             .send(Either::Right(Response {
@@ -122,12 +126,8 @@ where
         };
 
         println!("program is !! {}", args.program);
-        self.initialize_debugger(&args.program);
+        // TODO: this should happen in the initialization
         println!("program initialized");
-
-        // let reply = self.server.as_mut().unwrap().receiver.recv().await.unwrap();
-        println!("got reply");
-        // assert!(matches!(reply, CommandReply::LaunchReply));
 
         // TODO some argument checking I think
         self.client
@@ -151,9 +151,9 @@ where
         self.client.set_state(State::ShutDown);
 
         if let Some(server) = self.server.as_mut() {
-            let _ = server.debugger.kill().await.inspect_err(|e| {
-                tracing::error!("Failed to kill debugger: {e}");
-            });
+            server
+                .shutdown
+                .store(true, std::sync::atomic::Ordering::SeqCst);
         }
 
         let body = Some(ResponseBody::Disconnect);
@@ -202,64 +202,24 @@ where
         // .await;
     }
 
-    fn initialize_debugger(&mut self, program: &str) {
-        use std::process::Stdio;
-
-        //TODO -- where do we assume the binary is
-        let mut child = TokioCommand::new("cargo")
-            .args([
-                "run",
-                "--quiet",
-                "--release",
-                "--manifest-path",
-                "../tvix-debugger/Cargo.toml",
-                "--",
-                "--program",
-                program,
-            ])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .expect("Failed to launch debugger process");
-
-        let stdin: ChildStdin = child.stdin.take().expect("Missing debugger stdin");
-        let stdout = child.stdout.take().expect("Missing debugger stdout");
-
-        let mut stdin = stdin;
-        let stdout_reader = BufReader::new(stdout);
-
+    async fn initialize_debugger(&mut self) {
         let (cmd_sender, mut cmd_receiver) = tokio::sync::mpsc::channel::<Command>(32);
         let (reply_sender, reply_receiver) = tokio::sync::mpsc::channel::<CommandReply>(32);
 
-        // Writer task: send Command -> stdin
-        tokio::spawn(async move {
-            while let Some(cmd) = cmd_receiver.recv().await {
-                let msg = match serde_json::to_string(&cmd) {
-                    Ok(m) => m,
-                    Err(e) => {
-                        // eprintln!("Failed to serialize command: {e}");
-                        continue;
-                    }
-                };
-                if let Err(e) = stdin.write_all(msg.as_bytes()).await {
-                    // eprintln!("Failed to write to debugger stdin: {e}");
-                    break;
-                }
-                let _ = stdin.write_all(b"\n").await;
-            }
-        });
+        let shutdown_token = Arc::new(AtomicBool::new(false));
+        let shutdown_token_clone = shutdown_token.clone();
 
-        // Reader task: read CommandReply <- stdout
-        tokio::spawn(async move {
-            let mut lines = stdout_reader.lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                match serde_json::from_str::<CommandReply>(&line) {
-                    Ok(reply) => {
-                        let _ = reply_sender.send(reply);
-                    }
-                    Err(e) => {
-                        // eprintln!("Failed to deserialize reply: {e} - line: {line}");
-                    }
+        let child = std::thread::spawn(move || {
+            let args = Args::default();
+            let mut debugger = tvix_debugger::backend::TvixBackend::new(args);
+            while debugger.get_state() < DebuggerState::ShutDown
+                && !shutdown_token_clone.load(std::sync::atomic::Ordering::Relaxed)
+            {
+                if let Some(cmd) = cmd_receiver.blocking_recv() {
+                    let reply = debugger.handle_command(cmd);
+                    let _ = reply_sender.blocking_send(reply);
+                } else {
+                    break;
                 }
             }
         });
@@ -268,6 +228,7 @@ where
             sender: cmd_sender,
             receiver: reply_receiver,
             debugger: child,
+            shutdown: shutdown_token,
         });
     }
 }
@@ -290,51 +251,4 @@ where
 #[derive(Default, Debug, Clone)]
 pub struct NixDebugState {
     // root_file: std::io
-}
-
-// FIXME why does capabilities not implement default?
-/// "sane" capabilities: disable everything!
-#[must_use]
-pub fn default_capabilities() -> Capabilities {
-    Capabilities {
-        supports_configuration_done_request: None,
-        supports_function_breakpoints: None,
-        supports_step_in_targets_request: None,
-        support_terminate_debuggee: None,
-        supports_loaded_sources_request: None,
-        supports_data_breakpoints: None,
-        supports_breakpoint_locations_request: None,
-        supports_conditional_breakpoints: None,
-        supports_hit_conditional_breakpoints: None,
-        supports_evaluate_for_hovers: None,
-        exception_breakpoint_filters: None,
-        supports_step_back: None,
-        supports_set_variable: None,
-        supports_restart_frame: None,
-        supports_goto_targets_request: None,
-        supports_completions_request: None,
-        completion_trigger_characters: None,
-        supports_modules_request: None,
-        additional_module_columns: None,
-        supported_checksum_algorithms: None,
-        supports_restart_request: None,
-        supports_exception_options: None,
-        supports_value_formatting_options: None,
-        supports_exception_info_request: None,
-        support_suspend_debuggee: None,
-        supports_delayed_stack_trace_loading: None,
-        supports_log_points: None,
-        supports_terminate_threads_request: None,
-        supports_set_expression: None,
-        supports_terminate_request: None,
-        supports_read_memory_request: None,
-        supports_write_memory_request: None,
-        supports_disassemble_request: None,
-        supports_cancel_request: None,
-        supports_clipboard_context: None,
-        supports_stepping_granularity: None,
-        supports_instruction_breakpoints: None,
-        supports_exception_filter_options: None,
-        supports_single_thread_execution_requests: None,
-    }
 }

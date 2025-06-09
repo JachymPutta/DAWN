@@ -1,4 +1,4 @@
-use debug_types::{events::Event, requests::*, responses::Response};
+use debug_types::{events::Event, requests::*, responses::Response, types::Capabilities};
 use serde::{Deserialize, Serialize};
 
 /// Mirror of the RequestCommand debug_types enum, with some modifications for custom args

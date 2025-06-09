@@ -89,7 +89,7 @@ impl DebugObserver {
             return Err("observer: Received done".into());
         }
 
-        if self.cur_cmd == ObserverCommand::Wait && command != ObserverCommand::Launch {
+        if self.cur_cmd == ObserverCommand::Wait && !matches!(command, ObserverCommand::Launch(_)) {
             println!("Program is not running! Launch first");
             return Ok(());
         }
@@ -99,7 +99,7 @@ impl DebugObserver {
             ObserverCommand::Break(smol_str) => self.handle_break(smol_str.clone()),
             ObserverCommand::Continue => self.handle_continue(),
             ObserverCommand::Step => self.handle_step(),
-            ObserverCommand::Launch => self.handle_launch(),
+            ObserverCommand::Launch(_) => self.handle_launch(), //FIXME: do we need the launch arg?
             ObserverCommand::Wait => (),
             ObserverCommand::Done => (),
             _ => panic!("observer: unexpected request: {:?}", command),

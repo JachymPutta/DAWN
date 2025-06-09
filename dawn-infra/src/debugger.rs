@@ -9,7 +9,13 @@ use debug_types::{
     responses::Response,
 };
 use futures::{SinkExt, StreamExt};
-use std::sync::atomic::Ordering::Relaxed;
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering::Relaxed},
+        Arc,
+    },
+    thread::JoinHandle,
+};
 use tokio_util::codec::{FramedRead, FramedWrite};
 use tvix_debugger::commands::{Command, CommandReply};
 
@@ -47,7 +53,9 @@ pub struct Server {
     /// channel for replies from the debugger
     pub receiver: mpsc::Receiver<CommandReply>,
     /// debugger handle
-    pub debugger: tokio::process::Child,
+    pub debugger: JoinHandle<()>,
+    /// shutdown token
+    pub shutdown: Arc<AtomicBool>,
 }
 
 /// Struct used to abstract away communication with client
